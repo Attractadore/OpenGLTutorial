@@ -8,8 +8,6 @@ target_include_directories(${PROJECT_NAME} PRIVATE
                     "${PROJECT_SOURCE_DIR}/../include/"
                      ${OPENGL_INCLUDE_DIRS}
                      ${GLFW3_INCLUDE_DIRS})
-set(CMAKE_CXX_STANDARD 17)
-set(CMAKE_CXX_STANDARD_REQUIRED True)
 target_link_libraries(${PROJECT_NAME}
                       ${OPENGL_LIBRARIES}
                       glfw

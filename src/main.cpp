@@ -5,6 +5,16 @@
 #include <string>
 #include <vector>
 #include <iostream>
+#include <filesystem>
+#include <fstream>
+#include <iterator>
+
+std::vector<char> getBinary(std::filesystem::path filePath){
+    std::ifstream is(filePath, std::ios::binary);
+    std::vector<char> data{std::istreambuf_iterator<char>(is),
+                           std::istreambuf_iterator<char>()};
+    return data;
+}
 
 void windowResizeCallback(GLFWwindow* window, int width, int height){
     glViewport(0, 0, width, height);
@@ -16,8 +26,8 @@ int main(){
     int defaultWindowHeight = 600;
     std::string windowTitle = "OpenGL Tutorial";
 
-    GLuint vertexShader;
-    GLuint fragmentShader;
+    GLuint vertShader;
+    GLuint fragShader;
     GLuint triangleShaderProgram;
     GLuint vertexVBO;
     GLuint vertexEBO;
@@ -25,10 +35,10 @@ int main(){
 
     std::vector<GLfloat> vertexCoords =
     {
-        -0.5f, 0.5f, 0.0f,
-        0.5f, 0.5f, 0.0f,
-        0.5f, -0.5f, 0.0f,
-        -0.5f, -0.5f, 0.0f,
+        -0.5f,  0.5f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f,
+         0.5f,  0.5f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f,
+         0.5f, -0.5f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f,
+        -0.5f, -0.5f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f,
     };
 
     std::vector<GLuint> vertexIndices =
@@ -37,59 +47,49 @@ int main(){
         2, 3, 0
     };
 
-    const char* vertexShaderSource =
-         R"(#version 330 core
-            layout (location = 0) in vec3 aPos;
-
-            void main()
-            {
-               gl_Position = vec4(aPos.x, aPos.y, aPos.z, 1.0);
-            })";
-
-    const char* fragmentShaderSource =
-         R"(#version 330 core
-            out vec4 FragColor;
-
-            void main()
-            {
-               FragColor = vec4(1.0, 0.5, 0.0, 1.0);
-            })";
-
     glfwInit();
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 6);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+    glfwWindowHint(GLFW_OPENGL_DEBUG_CONTEXT, GLFW_TRUE);
     GLFWwindow* window = glfwCreateWindow(defaultWindowWidth, defaultWindowHeight, windowTitle.c_str(), nullptr, nullptr);
     glfwMakeContextCurrent(window);
     gladLoadGLLoader((GLADloadproc)glfwGetProcAddress);
     glfwSetFramebufferSizeCallback(window, windowResizeCallback);
 
-    vertexShader = glCreateShader(GL_VERTEX_SHADER);
-    fragmentShader = glCreateShader(GL_FRAGMENT_SHADER);
-    glShaderSource(vertexShader, 1, &vertexShaderSource, nullptr);
-    glCompileShader(vertexShader);
-    glShaderSource(fragmentShader, 1, &fragmentShaderSource, nullptr);
-    glCompileShader(fragmentShader);
+    vertShader = glCreateShader(GL_VERTEX_SHADER);
+    fragShader = glCreateShader(GL_FRAGMENT_SHADER);
+
+    auto vertShaderBinary = getBinary("assets/shaders/bin/triangle.vert");
+    auto fragShaderBinary = getBinary("assets/shaders/bin/triangle.frag");
+
+    glShaderBinary(1, &vertShader, GL_SHADER_BINARY_FORMAT_SPIR_V, vertShaderBinary.data(), vertShaderBinary.size());
+    glSpecializeShader(vertShader, "main", 0, nullptr, nullptr);
+    glShaderBinary(1, &fragShader, GL_SHADER_BINARY_FORMAT_SPIR_V, fragShaderBinary.data(), fragShaderBinary.size());
+    glSpecializeShader(fragShader, "main", 0, nullptr, nullptr);
     triangleShaderProgram = glCreateProgram();
-    glAttachShader(triangleShaderProgram, vertexShader);
-    glAttachShader(triangleShaderProgram, fragmentShader);
+    glAttachShader(triangleShaderProgram, vertShader);
+    glAttachShader(triangleShaderProgram, fragShader);
     glLinkProgram(triangleShaderProgram);
-    glDeleteShader(vertexShader);
-    glDeleteShader(fragmentShader);
+    glDetachShader(triangleShaderProgram, vertShader);
+    glDetachShader(triangleShaderProgram, fragShader);
+    glDeleteShader(vertShader);
+    glDeleteShader(fragShader);
 
-    glGenVertexArrays(1, &triangleVAO);
-    glGenBuffers(1, &vertexVBO);
-    glGenBuffers(1, &vertexEBO);
+    glCreateVertexArrays(1, &triangleVAO);
+    glCreateBuffers(1, &vertexVBO);
+    glCreateBuffers(1, &vertexEBO);
 
-    glBindVertexArray(triangleVAO);
-    glBindBuffer(GL_ARRAY_BUFFER, vertexVBO);
-    glBufferData(GL_ARRAY_BUFFER, sizeof (GLfloat) * vertexCoords.size(), vertexCoords.data(), GL_STATIC_DRAW);
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), nullptr);
-    glEnableVertexAttribArray(0);
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, vertexEBO);
-    glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof (GLuint) * vertexIndices.size(), vertexIndices.data(), GL_STATIC_DRAW);
-
-    glBindVertexArray(0);
+    glNamedBufferData(vertexVBO, sizeof (GLfloat) * vertexCoords.size(), vertexCoords.data(), GL_STATIC_DRAW);
+    glNamedBufferData(vertexEBO, sizeof (GLuint) * vertexIndices.size(), vertexIndices.data(), GL_STATIC_DRAW);
+    glVertexArrayAttribFormat(triangleVAO, 0, 3, GL_FLOAT, GL_FALSE, 0);
+    glVertexArrayAttribFormat(triangleVAO, 1, 4, GL_FLOAT, GL_FALSE, 3 * sizeof(GLfloat));
+    glVertexArrayAttribBinding(triangleVAO, 0, 0);
+    glVertexArrayAttribBinding(triangleVAO, 1, 0);
+    glVertexArrayVertexBuffer(triangleVAO, 0, vertexVBO, 0, 7 * sizeof (GLfloat));
+    glVertexArrayElementBuffer(triangleVAO, vertexEBO);
+    glEnableVertexArrayAttrib(triangleVAO, 0);
+    glEnableVertexArrayAttrib(triangleVAO, 1);
 
     while (not glfwWindowShouldClose(window)){
 
@@ -111,7 +111,8 @@ int main(){
     }
 
     glDeleteVertexArrays(1, &triangleVAO);
-    glDeleteVertexArrays(1, &vertexVBO);
+    glDeleteBuffers(1, &vertexVBO);
+    glDeleteBuffers(1, &vertexEBO);
     glDeleteProgram(triangleShaderProgram);
 
     glfwDestroyWindow(window);

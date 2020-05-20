@@ -2,6 +2,7 @@
 
 #include <GLFW/glfw3.h>
 
+#include <cmath>
 #include <string>
 #include <vector>
 #include <iostream>
@@ -10,10 +11,16 @@ void windowResizeCallback(GLFWwindow* window, int width, int height){
     glViewport(0, 0, width, height);
 }
 
+void debugFunction(GLenum source​, GLenum type​, GLuint id​, GLenum severity​, GLsizei length​, const GLchar* message​, const void* userParam​){
+    if (severity​ != GL_DEBUG_SEVERITY_NOTIFICATION){
+        std::cout << message​ << std::endl;
+    }
+}
+
 int main(){
 
     int defaultWindowWidth = 800;
-    int defaultWindowHeight = 600;
+    int defaultWindowHeight = 800;
     std::string windowTitle = "OpenGL Tutorial";
 
     GLuint vertexShader;
@@ -22,41 +29,53 @@ int main(){
     GLuint vertexVBO;
     GLuint vertexEBO;
     GLuint triangleVAO;
+    GLuint timeUniformLocation;
 
-    std::vector<GLfloat> vertexCoords =
+    std::vector<GLfloat> vertexData =
     {
-        -0.5f, 0.5f, 0.0f,
-        0.5f, 0.5f, 0.0f,
-        0.5f, -0.5f, 0.0f,
-        -0.5f, -0.5f, 0.0f,
+          0.0f,          1.0f,         1.0f, 0.0f, 0.0f,
+          sinf(M_PI/3), -cosf(M_PI/3), 0.0f, 1.0f, 0.0f,
+         -sinf(M_PI/3), -cosf(M_PI/3), 0.0f, 0.0f, 1.0f
     };
 
     std::vector<GLuint> vertexIndices =
     {
         0, 1, 2,
-        2, 3, 0
     };
 
     const char* vertexShaderSource =
          R"(#version 330 core
-            layout (location = 0) in vec3 aPos;
+            layout (location = 0) in vec2 vPos;
+            layout (location = 1) in vec3 vColor;
+
+            out vec3 fColor;
+
+            uniform float time;
 
             void main()
             {
-               gl_Position = vec4(aPos.x, aPos.y, aPos.z, 1.0);
+                mat2 rotation = mat2(
+                     cos(time), sin(time),
+                    -sin(time), cos(time)
+                );
+                gl_Position = vec4(rotation * normalize(vPos) * .75f, 0.0, 1.0);
+                fColor = vColor;
             })";
 
     const char* fragmentShaderSource =
          R"(#version 330 core
-            out vec4 FragColor;
+            in vec3 fColor;
+
+            out vec4 ofColor;
+            uniform float time;
 
             void main()
             {
-               FragColor = vec4(1.0, 0.5, 0.0, 1.0);
+                ofColor = vec4(fColor * (sin(time/2 - exp(length(fColor))) / 2.0 + 0.5), 1.0);
             })";
 
     glfwInit();
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
     glfwWindowHint(GLFW_OPENGL_DEBUG_CONTEXT, GLFW_TRUE);
@@ -64,6 +83,13 @@ int main(){
     glfwMakeContextCurrent(window);
     gladLoadGLLoader((GLADloadproc)glfwGetProcAddress);
     glfwSetFramebufferSizeCallback(window, windowResizeCallback);
+
+    glEnable(GL_DEBUG_OUTPUT);
+    glEnable(GL_DEBUG_OUTPUT_SYNCHRONOUS);
+
+    if (glIsEnabled(GL_DEBUG_OUTPUT)){
+        glDebugMessageCallback(debugFunction, nullptr);
+    }
 
     vertexShader = glCreateShader(GL_VERTEX_SHADER);
     fragmentShader = glCreateShader(GL_FRAGMENT_SHADER);
@@ -80,15 +106,19 @@ int main(){
     glDeleteShader(vertexShader);
     glDeleteShader(fragmentShader);
 
+    timeUniformLocation = glGetUniformLocation(triangleShaderProgram, "time");
+
     glGenVertexArrays(1, &triangleVAO);
     glGenBuffers(1, &vertexVBO);
     glGenBuffers(1, &vertexEBO);
 
     glBindVertexArray(triangleVAO);
     glBindBuffer(GL_ARRAY_BUFFER, vertexVBO);
-    glBufferData(GL_ARRAY_BUFFER, sizeof (GLfloat) * vertexCoords.size(), vertexCoords.data(), GL_STATIC_DRAW);
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), nullptr);
+    glBufferData(GL_ARRAY_BUFFER, sizeof (GLfloat) * vertexData.size(), vertexData.data(), GL_STATIC_DRAW);
+    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(GLfloat), nullptr);
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(GLfloat), (void *) (2 * sizeof(GLfloat)));
     glEnableVertexAttribArray(0);
+    glEnableVertexAttribArray(1);
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, vertexEBO);
     glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof (GLuint) * vertexIndices.size(), vertexIndices.data(), GL_STATIC_DRAW);
 
@@ -106,8 +136,9 @@ int main(){
         glClearColor(0.1f, 0.3f, 0.3f, 0.0f);
         glClear(GL_COLOR_BUFFER_BIT);
         glUseProgram(triangleShaderProgram);
+        glUniform1f(timeUniformLocation, glfwGetTime());
         glBindVertexArray(triangleVAO);
-        glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, nullptr);
+        glDrawElements(GL_TRIANGLES, 3, GL_UNSIGNED_INT, nullptr);
         glBindVertexArray(0);
         glfwSwapBuffers(window);
         glfwPollEvents();

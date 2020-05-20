@@ -2,12 +2,19 @@
 
 #include <GLFW/glfw3.h>
 
+#include <cmath>
 #include <string>
 #include <vector>
 #include <iostream>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
+
+void debugMessageCallback(GLenum source​, GLenum type​, GLuint id​, GLenum severity​, GLsizei length​, const GLchar* message​, const void* userParam){
+    if (severity​ != GL_DEBUG_SEVERITY_NOTIFICATION){
+        std::cout << message​ << std::endl;
+    }
+}
 
 std::vector<char> getBinary(std::filesystem::path filePath){
     std::ifstream is(filePath, std::ios::binary);
@@ -35,16 +42,14 @@ int main(){
 
     std::vector<GLfloat> vertexCoords =
     {
-        -0.5f,  0.5f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f,
-         0.5f,  0.5f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f,
-         0.5f, -0.5f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f,
-        -0.5f, -0.5f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f,
+          0.0f,          1.0f,         1.0f, 0.0f, 0.0f,
+          sinf(M_PI/3), -cosf(M_PI/3), 0.0f, 1.0f, 0.0f,
+         -sinf(M_PI/3), -cosf(M_PI/3), 0.0f, 0.0f, 1.0f,
     };
 
     std::vector<GLuint> vertexIndices =
     {
         0, 1, 2,
-        2, 3, 0
     };
 
     glfwInit();
@@ -56,6 +61,13 @@ int main(){
     glfwMakeContextCurrent(window);
     gladLoadGLLoader((GLADloadproc)glfwGetProcAddress);
     glfwSetFramebufferSizeCallback(window, windowResizeCallback);
+
+    glEnable(GL_DEBUG_OUTPUT);
+    glEnable(GL_DEBUG_OUTPUT_SYNCHRONOUS);
+
+    if (glIsEnabled(GL_DEBUG_OUTPUT)){
+        glDebugMessageCallback(debugMessageCallback, nullptr);
+    }
 
     vertShader = glCreateShader(GL_VERTEX_SHADER);
     fragShader = glCreateShader(GL_FRAGMENT_SHADER);
@@ -82,11 +94,11 @@ int main(){
 
     glNamedBufferData(vertexVBO, sizeof (GLfloat) * vertexCoords.size(), vertexCoords.data(), GL_STATIC_DRAW);
     glNamedBufferData(vertexEBO, sizeof (GLuint) * vertexIndices.size(), vertexIndices.data(), GL_STATIC_DRAW);
-    glVertexArrayAttribFormat(triangleVAO, 0, 3, GL_FLOAT, GL_FALSE, 0);
-    glVertexArrayAttribFormat(triangleVAO, 1, 4, GL_FLOAT, GL_FALSE, 3 * sizeof(GLfloat));
+    glVertexArrayAttribFormat(triangleVAO, 0, 2, GL_FLOAT, GL_FALSE, 0);
+    glVertexArrayAttribFormat(triangleVAO, 1, 3, GL_FLOAT, GL_FALSE, 2 * sizeof(GLfloat));
     glVertexArrayAttribBinding(triangleVAO, 0, 0);
     glVertexArrayAttribBinding(triangleVAO, 1, 0);
-    glVertexArrayVertexBuffer(triangleVAO, 0, vertexVBO, 0, 7 * sizeof (GLfloat));
+    glVertexArrayVertexBuffer(triangleVAO, 0, vertexVBO, 0, 5 * sizeof (GLfloat));
     glVertexArrayElementBuffer(triangleVAO, vertexEBO);
     glEnableVertexArrayAttrib(triangleVAO, 0);
     glEnableVertexArrayAttrib(triangleVAO, 1);
@@ -103,8 +115,9 @@ int main(){
         glClearColor(0.1f, 0.3f, 0.3f, 0.0f);
         glClear(GL_COLOR_BUFFER_BIT);
         glUseProgram(triangleShaderProgram);
+        glUniform1f(0, glfwGetTime());
         glBindVertexArray(triangleVAO);
-        glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, nullptr);
+        glDrawElements(GL_TRIANGLES, 3, GL_UNSIGNED_INT, nullptr);
         glBindVertexArray(0);
         glfwSwapBuffers(window);
         glfwPollEvents();

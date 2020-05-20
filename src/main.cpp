@@ -18,9 +18,13 @@ void debugMessageCallback(GLenum source​, GLenum type​, GLuint id​, GLenum
 
 std::vector<char> getBinary(std::filesystem::path filePath){
     std::ifstream is(filePath, std::ios::binary);
-    std::vector<char> data{std::istreambuf_iterator<char>(is),
-                           std::istreambuf_iterator<char>()};
-    return data;
+    if (!is){
+        return {};
+    }
+    auto fileSize = std::filesystem::file_size(filePath);
+    std::vector<char> fileContents(fileSize);
+    is.read(fileContents.data(), fileSize);
+    return fileContents;
 }
 
 void windowResizeCallback(GLFWwindow* window, int width, int height){

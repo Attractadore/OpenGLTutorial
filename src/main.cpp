@@ -6,6 +6,9 @@
 #include <string>
 #include <vector>
 #include <iostream>
+#include <filesystem>
+#include <fstream>
+#include <iterator>
 
 void windowResizeCallback(GLFWwindow* window, int width, int height){
     glViewport(0, 0, width, height);
@@ -15,6 +18,17 @@ void debugFunction(GLenum source​, GLenum type​, GLuint id​, GLenum severi
     if (severity​ != GL_DEBUG_SEVERITY_NOTIFICATION){
         std::cout << message​ << std::endl;
     }
+}
+
+std::string loadShaderSource(std::filesystem::path filePath){
+    std::fstream is(filePath);
+    if (!is){
+        return "";
+    }
+    auto fileSize = std::filesystem::file_size(filePath);
+    std::string fileContents(fileSize, ' ');
+    is.read(fileContents.data(), fileSize);
+    return fileContents;
 }
 
 int main(){
@@ -43,36 +57,11 @@ int main(){
         0, 1, 2,
     };
 
-    const char* vertexShaderSource =
-         R"(#version 330 core
-            layout (location = 0) in vec2 vPos;
-            layout (location = 1) in vec3 vColor;
+    auto vertexShaderSource = loadShaderSource("assets/shaders/triangle.vert");
+    auto fragmentShaderSource = loadShaderSource("assets/shaders/triangle.frag");
+    auto vertexShaderSourceCStr = vertexShaderSource.c_str();
+    auto fragmentShaderSourceCStr = fragmentShaderSource.c_str();
 
-            out vec3 fColor;
-
-            uniform float time;
-
-            void main()
-            {
-                mat2 rotation = mat2(
-                     cos(time), sin(time),
-                    -sin(time), cos(time)
-                );
-                gl_Position = vec4(rotation * normalize(vPos) * .75f, 0.0, 1.0);
-                fColor = vColor;
-            })";
-
-    const char* fragmentShaderSource =
-         R"(#version 330 core
-            in vec3 fColor;
-
-            out vec4 ofColor;
-            uniform float time;
-
-            void main()
-            {
-                ofColor = vec4(fColor * (sin(time/2 - exp(length(fColor))) / 2.0 + 0.5), 1.0);
-            })";
 
     glfwInit();
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
@@ -93,9 +82,9 @@ int main(){
 
     vertexShader = glCreateShader(GL_VERTEX_SHADER);
     fragmentShader = glCreateShader(GL_FRAGMENT_SHADER);
-    glShaderSource(vertexShader, 1, &vertexShaderSource, nullptr);
+    glShaderSource(vertexShader, 1, &vertexShaderSourceCStr, nullptr);
     glCompileShader(vertexShader);
-    glShaderSource(fragmentShader, 1, &fragmentShaderSource, nullptr);
+    glShaderSource(fragmentShader, 1, &fragmentShaderSourceCStr, nullptr);
     glCompileShader(fragmentShader);
     triangleShaderProgram = glCreateProgram();
     glAttachShader(triangleShaderProgram, vertexShader);

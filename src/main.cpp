@@ -2,6 +2,8 @@
 
 #include <GLFW/glfw3.h>
 
+#include <IL/il.h>
+
 #include <cmath>
 #include <string>
 #include <vector>
@@ -31,10 +33,31 @@ std::string loadShaderSource(std::filesystem::path filePath){
     return fileContents;
 }
 
-int main(){
+void loadTextureData(GLuint textureId, std::filesystem::path filePath){
+    if (!std::filesystem::exists(filePath)){
+        return;
+    }
+    glBindTexture(GL_TEXTURE_2D, textureId);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+    ILuint loadedImage;
+    ilGenImages(1, &loadedImage);
+    ilBindImage(loadedImage);
+    ilLoadImage(filePath.c_str());
+    int width = ilGetInteger(IL_IMAGE_WIDTH);
+    int height = ilGetInteger(IL_IMAGE_HEIGHT);
+    std::vector<std::byte> imageData(width * height * 4);
+    ilCopyPixels(0, 0, 0, width, height, 1, IL_RGBA, IL_UNSIGNED_BYTE, imageData.data());
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, imageData.data());
+    glGenerateMipmap(GL_TEXTURE_2D);
+    ilDeleteImage(loadedImage);
+}
 
+int main(){
     int defaultWindowWidth = 800;
-    int defaultWindowHeight = 800;
+    int defaultWindowHeight = 600;
     std::string windowTitle = "OpenGL Tutorial";
 
     GLuint vertexShader;
@@ -44,24 +67,29 @@ int main(){
     GLuint vertexEBO;
     GLuint triangleVAO;
     GLuint timeUniformLocation;
+    GLuint backgroundTextureUniformLocation;
+    GLuint foregroundTextureUniformLocation;
+    GLuint triangleBackgroundTexture;
+    GLuint triangleForegroundTexture;
 
     std::vector<GLfloat> vertexData =
     {
-          0.0f,          1.0f,         1.0f, 0.0f, 0.0f,
-          sinf(M_PI/3), -cosf(M_PI/3), 0.0f, 1.0f, 0.0f,
-         -sinf(M_PI/3), -cosf(M_PI/3), 0.0f, 0.0f, 1.0f
+          0.5f,  0.5f, 1.0f, 0.0f, 0.0f, 1.0f, 1.0f,
+          0.5f, -0.5f, 0.0f, 1.0f, 0.0f, 1.0f, 0.0f,
+         -0.5f, -0.5f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f,
+         -0.5f,  0.5f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f,
     };
 
     std::vector<GLuint> vertexIndices =
     {
         0, 1, 2,
+        2, 3, 0,
     };
 
     auto vertexShaderSource = loadShaderSource("assets/shaders/triangle.vert");
     auto fragmentShaderSource = loadShaderSource("assets/shaders/triangle.frag");
     auto vertexShaderSourceCStr = vertexShaderSource.c_str();
     auto fragmentShaderSourceCStr = fragmentShaderSource.c_str();
-
 
     glfwInit();
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
@@ -73,9 +101,12 @@ int main(){
     gladLoadGLLoader((GLADloadproc)glfwGetProcAddress);
     glfwSetFramebufferSizeCallback(window, windowResizeCallback);
 
+    ilInit();
+    ilEnable(IL_ORIGIN_SET);
+    ilOriginFunc(IL_ORIGIN_LOWER_LEFT);
+
     glEnable(GL_DEBUG_OUTPUT);
     glEnable(GL_DEBUG_OUTPUT_SYNCHRONOUS);
-
     if (glIsEnabled(GL_DEBUG_OUTPUT)){
         glDebugMessageCallback(debugFunction, nullptr);
     }
@@ -96,25 +127,30 @@ int main(){
     glDeleteShader(fragmentShader);
 
     timeUniformLocation = glGetUniformLocation(triangleShaderProgram, "time");
+    backgroundTextureUniformLocation = glGetUniformLocation(triangleShaderProgram, "backTex");
+    foregroundTextureUniformLocation = glGetUniformLocation(triangleShaderProgram, "foreTex");
 
     glGenVertexArrays(1, &triangleVAO);
     glGenBuffers(1, &vertexVBO);
     glGenBuffers(1, &vertexEBO);
-
     glBindVertexArray(triangleVAO);
     glBindBuffer(GL_ARRAY_BUFFER, vertexVBO);
     glBufferData(GL_ARRAY_BUFFER, sizeof (GLfloat) * vertexData.size(), vertexData.data(), GL_STATIC_DRAW);
-    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(GLfloat), nullptr);
-    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(GLfloat), (void *) (2 * sizeof(GLfloat)));
+    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 7 * sizeof(GLfloat), nullptr);
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 7 * sizeof(GLfloat), (void *) (2 * sizeof(GLfloat)));
+    glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 7 * sizeof(GLfloat), (void *) (5 * sizeof(GLfloat)));
     glEnableVertexAttribArray(0);
     glEnableVertexAttribArray(1);
+    glEnableVertexAttribArray(2);
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, vertexEBO);
     glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof (GLuint) * vertexIndices.size(), vertexIndices.data(), GL_STATIC_DRAW);
 
-    glBindVertexArray(0);
+    glGenTextures(1, &triangleBackgroundTexture);
+    glGenTextures(1, &triangleForegroundTexture);
+    loadTextureData(triangleBackgroundTexture, "assets/textures/tex1.png");
+    loadTextureData(triangleForegroundTexture, "assets/textures/tex2.png");
 
     while (not glfwWindowShouldClose(window)){
-
         if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS){
             glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
         }
@@ -122,17 +158,27 @@ int main(){
             glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
         }
 
-        glClearColor(0.1f, 0.3f, 0.3f, 0.0f);
+        glClearColor(0.1f, 0.3f, 0.3f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT);
+
         glUseProgram(triangleShaderProgram);
         glUniform1f(timeUniformLocation, glfwGetTime());
+        glUniform1i(backgroundTextureUniformLocation, 0);
+        glUniform1i(foregroundTextureUniformLocation, 1);
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, triangleBackgroundTexture);
+        glActiveTexture(GL_TEXTURE1);
+        glBindTexture(GL_TEXTURE_2D, triangleForegroundTexture);
+
         glBindVertexArray(triangleVAO);
-        glDrawElements(GL_TRIANGLES, 3, GL_UNSIGNED_INT, nullptr);
-        glBindVertexArray(0);
+        glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, nullptr);
+
         glfwSwapBuffers(window);
         glfwPollEvents();
     }
 
+    glDeleteTextures(1, &triangleBackgroundTexture);
+    glDeleteTextures(1, &triangleForegroundTexture);
     glDeleteVertexArrays(1, &triangleVAO);
     glDeleteBuffers(1, &vertexVBO);
     glDeleteBuffers(1, &vertexEBO);
@@ -140,5 +186,6 @@ int main(){
 
     glfwDestroyWindow(window);
     glfwTerminate();
+
     return 0;
 }

@@ -1,17 +1,14 @@
 #version 330 core
 layout (location = 0) in vec2 vPos;
 layout (location = 1) in vec3 vColor;
+layout (location = 2) in vec2 vTex;
 
 out vec3 fColor;
-
-uniform float time;
+out vec2 fTex;
 
 void main()
 {
-    mat2 rotation = mat2(
-         cos(time), sin(time),
-        -sin(time), cos(time)
-    );
     fColor = vColor;
-    gl_Position = vec4(rotation * normalize(vPos) * .75f, 0.0, 1.0);
+    fTex = vTex;
+    gl_Position = vec4(vPos, 0.0f, 1.0f);
 }

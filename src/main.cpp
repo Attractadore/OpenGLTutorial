@@ -2,6 +2,8 @@
 
 #include <GLFW/glfw3.h>
 
+#include <IL/il.h>
+
 #include <cmath>
 #include <string>
 #include <vector>
@@ -16,6 +18,10 @@ void debugMessageCallback(GLenum source​, GLenum type​, GLuint id​, GLenum
     }
 }
 
+void windowResizeCallback(GLFWwindow* window, int width, int height){
+    glViewport(0, 0, width, height);
+}
+
 std::vector<char> getBinary(std::filesystem::path filePath){
     std::ifstream is(filePath, std::ios::binary);
     if (!is){
@@ -27,12 +33,30 @@ std::vector<char> getBinary(std::filesystem::path filePath){
     return fileContents;
 }
 
-void windowResizeCallback(GLFWwindow* window, int width, int height){
-    glViewport(0, 0, width, height);
+void loadTexture(GLuint textureID, std::filesystem::path filePath){
+    if (!std::filesystem::exists(filePath)){
+        return;
+    }
+    glTextureParameteri(textureID, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTextureParameteri(textureID, GL_TEXTURE_WRAP_T, GL_REPEAT);
+    glTextureParameteri(textureID, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTextureParameteri(textureID, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+    ILuint loadImage;
+    ilGenImages(1, &loadImage);
+    ilBindImage(loadImage);
+    ilLoadImage(filePath.c_str());
+    int width = ilGetInteger(IL_IMAGE_WIDTH);
+    int height = ilGetInteger(IL_IMAGE_HEIGHT);
+    int levels = std::log2(std::min(width, height)) + 1;
+    glTextureStorage2D(textureID, levels, GL_RGBA8, width, height);
+    std::vector<std::byte> imageData(width * height * 4);
+    ilCopyPixels(0, 0, 0, width, height, 1, IL_RGBA, IL_UNSIGNED_BYTE, imageData.data());
+    glTextureSubImage2D(textureID, 0, 0, 0, width, height, GL_RGBA, GL_UNSIGNED_BYTE, imageData.data());
+    glGenerateTextureMipmap(textureID);
+    ilDeleteImage(loadImage);
 }
 
 int main(){
-
     int defaultWindowWidth = 800;
     int defaultWindowHeight = 600;
     std::string windowTitle = "OpenGL Tutorial";
@@ -43,17 +67,21 @@ int main(){
     GLuint vertexVBO;
     GLuint vertexEBO;
     GLuint triangleVAO;
+    GLuint triangleBackgroundTexture;
+    GLuint triangleForegroundTexture;
 
     std::vector<GLfloat> vertexCoords =
     {
-          0.0f,          1.0f,         1.0f, 0.0f, 0.0f,
-          sinf(M_PI/3), -cosf(M_PI/3), 0.0f, 1.0f, 0.0f,
-         -sinf(M_PI/3), -cosf(M_PI/3), 0.0f, 0.0f, 1.0f,
+         0.5f,  0.5f, 1.0f, 0.0f, 0.0f, 1.0f, 1.0f,
+         0.5f, -0.5f, 0.0f, 1.0f, 0.0f, 1.0f, 0.0f,
+        -0.5f, -0.5f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f,
+        -0.5f,  0.5f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f,
     };
 
     std::vector<GLuint> vertexIndices =
     {
         0, 1, 2,
+        2, 3, 0,
     };
 
     glfwInit();
@@ -66,9 +94,12 @@ int main(){
     gladLoadGLLoader((GLADloadproc)glfwGetProcAddress);
     glfwSetFramebufferSizeCallback(window, windowResizeCallback);
 
+    ilInit();
+    ilEnable(IL_ORIGIN_SET);
+    ilOriginFunc(IL_ORIGIN_LOWER_LEFT);
+
     glEnable(GL_DEBUG_OUTPUT);
     glEnable(GL_DEBUG_OUTPUT_SYNCHRONOUS);
-
     if (glIsEnabled(GL_DEBUG_OUTPUT)){
         glDebugMessageCallback(debugMessageCallback, nullptr);
     }
@@ -97,18 +128,25 @@ int main(){
     glCreateBuffers(1, &vertexEBO);
 
     glNamedBufferData(vertexVBO, sizeof (GLfloat) * vertexCoords.size(), vertexCoords.data(), GL_STATIC_DRAW);
-    glNamedBufferData(vertexEBO, sizeof (GLuint) * vertexIndices.size(), vertexIndices.data(), GL_STATIC_DRAW);
     glVertexArrayAttribFormat(triangleVAO, 0, 2, GL_FLOAT, GL_FALSE, 0);
     glVertexArrayAttribFormat(triangleVAO, 1, 3, GL_FLOAT, GL_FALSE, 2 * sizeof(GLfloat));
+    glVertexArrayAttribFormat(triangleVAO, 2, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(GLfloat));
     glVertexArrayAttribBinding(triangleVAO, 0, 0);
     glVertexArrayAttribBinding(triangleVAO, 1, 0);
-    glVertexArrayVertexBuffer(triangleVAO, 0, vertexVBO, 0, 5 * sizeof (GLfloat));
-    glVertexArrayElementBuffer(triangleVAO, vertexEBO);
+    glVertexArrayAttribBinding(triangleVAO, 2, 0);
+    glVertexArrayVertexBuffer(triangleVAO, 0, vertexVBO, 0, 7 * sizeof (GLfloat));
     glEnableVertexArrayAttrib(triangleVAO, 0);
     glEnableVertexArrayAttrib(triangleVAO, 1);
+    glEnableVertexArrayAttrib(triangleVAO, 2);
+    glNamedBufferData(vertexEBO, sizeof (GLuint) * vertexIndices.size(), vertexIndices.data(), GL_STATIC_DRAW);
+    glVertexArrayElementBuffer(triangleVAO, vertexEBO);
+
+    glCreateTextures(GL_TEXTURE_2D, 1, &triangleBackgroundTexture);
+    loadTexture(triangleBackgroundTexture, "assets/textures/tex1.png");
+    glCreateTextures(GL_TEXTURE_2D, 1, &triangleForegroundTexture);
+    loadTexture(triangleForegroundTexture, "assets/textures/tex2.png");
 
     while (not glfwWindowShouldClose(window)){
-
         if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS){
             glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
         }
@@ -116,17 +154,26 @@ int main(){
             glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
         }
 
-        glClearColor(0.1f, 0.3f, 0.3f, 0.0f);
+        glClearColor(0.1f, 0.3f, 0.3f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT);
+
         glUseProgram(triangleShaderProgram);
         glUniform1f(0, glfwGetTime());
+        glUniform1i(1, 0);
+        glUniform1i(2, 1);
+        glBindTextureUnit(0, triangleBackgroundTexture);
+        glBindTextureUnit(1, triangleForegroundTexture);
+
         glBindVertexArray(triangleVAO);
-        glDrawElements(GL_TRIANGLES, 3, GL_UNSIGNED_INT, nullptr);
+        glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, nullptr);
         glBindVertexArray(0);
+
         glfwSwapBuffers(window);
         glfwPollEvents();
     }
 
+    glDeleteTextures(1, &triangleBackgroundTexture);
+    glDeleteTextures(1, &triangleForegroundTexture);
     glDeleteVertexArrays(1, &triangleVAO);
     glDeleteBuffers(1, &vertexVBO);
     glDeleteBuffers(1, &vertexEBO);

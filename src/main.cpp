@@ -1,9 +1,5 @@
 #include "glad.h"
 
-#include <GLFW/glfw3.h>
-
-#include <IL/il.h>
-
 #include <cmath>
 #include <string>
 #include <vector>
@@ -11,6 +7,12 @@
 #include <filesystem>
 #include <fstream>
 #include <iterator>
+
+#include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/type_ptr.hpp>
+#include <GLFW/glfw3.h>
+#include <IL/il.h>
 
 void windowResizeCallback(GLFWwindow* window, int width, int height){
     glViewport(0, 0, width, height);
@@ -56,9 +58,12 @@ void loadTextureData(GLuint textureId, std::filesystem::path filePath){
 }
 
 int main(){
-    int defaultWindowWidth = 800;
-    int defaultWindowHeight = 600;
     std::string windowTitle = "OpenGL Tutorial";
+    float horizontalFOV = 90.0f;
+    float aspectRatio = 16.0f / 9.0f;
+    int defaultWindowHeight = 720;
+    int defaultWindowWidth = defaultWindowHeight * aspectRatio;
+    float rotateSpeed = 180.0f;
 
     GLuint vertexShader;
     GLuint fragmentShader;
@@ -69,21 +74,38 @@ int main(){
     GLuint timeUniformLocation;
     GLuint backgroundTextureUniformLocation;
     GLuint foregroundTextureUniformLocation;
+    GLuint modelMatrixUniformLocation;
+    GLuint viewMatrixUniformLocation;
+    GLuint projectionMatrixUniformLocation;
     GLuint triangleBackgroundTexture;
     GLuint triangleForegroundTexture;
 
     std::vector<GLfloat> vertexData =
     {
-          0.5f,  0.5f, 1.0f, 0.0f, 0.0f, 1.0f, 1.0f,
-          0.5f, -0.5f, 0.0f, 1.0f, 0.0f, 1.0f, 0.0f,
-         -0.5f, -0.5f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f,
-         -0.5f,  0.5f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f,
+         1.0f,  1.0f,  1.0f, 1.0f, 0.f, 0.0f, 1.0f, 1.0f,
+         1.0f, -1.0f,  1.0f, 0.0f, 1.f, 0.0f, 1.0f, 1.0f,
+        -1.0f, -1.0f,  1.0f, 0.0f, 0.f, 1.0f, 1.0f, 1.0f,
+        -1.0f,  1.0f,  1.0f, 1.0f, 1.f, 1.0f, 1.0f, 1.0f,
+         1.0f,  1.0f, -1.0f, 0.0f, 0.f, 1.0f, 1.0f, 1.0f,
+         1.0f, -1.0f, -1.0f, 1.0f, 1.f, 1.0f, 1.0f, 1.0f,
+        -1.0f, -1.0f, -1.0f, 1.0f, 0.f, 0.0f, 1.0f, 1.0f,
+        -1.0f,  1.0f, -1.0f, 0.0f, 1.f, 0.0f, 1.0f, 1.0f,
     };
 
     std::vector<GLuint> vertexIndices =
     {
         0, 1, 2,
         2, 3, 0,
+        0, 1, 4,
+        1, 4, 5,
+        1, 2, 6,
+        1, 5, 6,
+        2, 3, 7,
+        2, 6, 7,
+        0, 3, 7,
+        0, 4, 7,
+        4, 5, 6,
+        4, 7, 6,
     };
 
     auto vertexShaderSource = loadShaderSource("assets/shaders/triangle.vert");
@@ -96,6 +118,7 @@ int main(){
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
     glfwWindowHint(GLFW_OPENGL_DEBUG_CONTEXT, GLFW_TRUE);
+    glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
     GLFWwindow* window = glfwCreateWindow(defaultWindowWidth, defaultWindowHeight, windowTitle.c_str(), nullptr, nullptr);
     glfwMakeContextCurrent(window);
     gladLoadGLLoader((GLADloadproc)glfwGetProcAddress);
@@ -110,6 +133,7 @@ int main(){
     if (glIsEnabled(GL_DEBUG_OUTPUT)){
         glDebugMessageCallback(debugFunction, nullptr);
     }
+    glEnable(GL_DEPTH_TEST);
 
     vertexShader = glCreateShader(GL_VERTEX_SHADER);
     fragmentShader = glCreateShader(GL_FRAGMENT_SHADER);
@@ -129,6 +153,9 @@ int main(){
     timeUniformLocation = glGetUniformLocation(triangleShaderProgram, "time");
     backgroundTextureUniformLocation = glGetUniformLocation(triangleShaderProgram, "backTex");
     foregroundTextureUniformLocation = glGetUniformLocation(triangleShaderProgram, "foreTex");
+    modelMatrixUniformLocation = glGetUniformLocation(triangleShaderProgram, "model");
+    viewMatrixUniformLocation = glGetUniformLocation(triangleShaderProgram, "view");
+    projectionMatrixUniformLocation = glGetUniformLocation(triangleShaderProgram, "projection");
 
     glGenVertexArrays(1, &triangleVAO);
     glGenBuffers(1, &vertexVBO);
@@ -136,9 +163,9 @@ int main(){
     glBindVertexArray(triangleVAO);
     glBindBuffer(GL_ARRAY_BUFFER, vertexVBO);
     glBufferData(GL_ARRAY_BUFFER, sizeof (GLfloat) * vertexData.size(), vertexData.data(), GL_STATIC_DRAW);
-    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 7 * sizeof(GLfloat), nullptr);
-    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 7 * sizeof(GLfloat), (void *) (2 * sizeof(GLfloat)));
-    glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 7 * sizeof(GLfloat), (void *) (5 * sizeof(GLfloat)));
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(GLfloat), nullptr);
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(GLfloat), (void *) (3 * sizeof(GLfloat)));
+    glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(GLfloat), (void *) (6 * sizeof(GLfloat)));
     glEnableVertexAttribArray(0);
     glEnableVertexAttribArray(1);
     glEnableVertexAttribArray(2);
@@ -150,31 +177,47 @@ int main(){
     loadTextureData(triangleBackgroundTexture, "assets/textures/tex1.png");
     loadTextureData(triangleForegroundTexture, "assets/textures/tex2.png");
 
+    glm::mat4 view = glm::translate(glm::mat4(1.0f), {0.0f, 0.0f, -5.0f,});
+    glm::mat4 projection = glm::perspective(glm::radians(horizontalFOV / aspectRatio), aspectRatio, 0.1f, 100.0f);
+
+    float previousTime = 0.0f;
+
     while (not glfwWindowShouldClose(window)){
-        if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS){
+
+        float currentTime = glfwGetTime();
+        float deltaTime = previousTime - currentTime;
+
+        if (glfwGetKey(window, GLFW_KEY_L) == GLFW_PRESS){
             glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
         }
-        else if (glfwGetKey(window, GLFW_KEY_F) == GLFW_PRESS){
+        if (glfwGetKey(window, GLFW_KEY_F) == GLFW_PRESS){
             glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
         }
 
+        glm::mat4 model = glm::rotate(glm::mat4(1.0f), glm::radians(currentTime * rotateSpeed), {0.0f, 1.0f, 0.0f});
+
         glClearColor(0.1f, 0.3f, 0.3f, 1.0f);
-        glClear(GL_COLOR_BUFFER_BIT);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
         glUseProgram(triangleShaderProgram);
         glUniform1f(timeUniformLocation, glfwGetTime());
         glUniform1i(backgroundTextureUniformLocation, 0);
         glUniform1i(foregroundTextureUniformLocation, 1);
+        glUniformMatrix4fv(modelMatrixUniformLocation, 1, GL_FALSE, glm::value_ptr(model));
+        glUniformMatrix4fv(viewMatrixUniformLocation, 1, GL_FALSE, glm::value_ptr(view));
+        glUniformMatrix4fv(projectionMatrixUniformLocation, 1, GL_FALSE, glm::value_ptr(projection));
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, triangleBackgroundTexture);
         glActiveTexture(GL_TEXTURE1);
         glBindTexture(GL_TEXTURE_2D, triangleForegroundTexture);
 
         glBindVertexArray(triangleVAO);
-        glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, nullptr);
+        glDrawElements(GL_TRIANGLES, 36, GL_UNSIGNED_INT, nullptr);
 
         glfwSwapBuffers(window);
         glfwPollEvents();
+
+        previousTime = currentTime;
     }
 
     glDeleteTextures(1, &triangleBackgroundTexture);

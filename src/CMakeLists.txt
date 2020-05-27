@@ -4,7 +4,7 @@ find_package(OpenGL REQUIRED)
 find_package(glfw3 REQUIRED)
 find_package(DevIL REQUIRED)
 find_package(glm REQUIRED)
-add_executable("Tutorial" "main.cpp" "glad.c")
+add_executable("Tutorial" "main.cpp" "glad.c" "Camera.cpp" "CameraManager.cpp")
 
 target_include_directories(${PROJECT_NAME} PRIVATE
                     "${PROJECT_SOURCE_DIR}/../include/"

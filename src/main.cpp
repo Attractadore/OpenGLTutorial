@@ -1,5 +1,8 @@
 #include "glad.h"
 
+#include "Camera.hpp"
+#include "CameraManager.hpp"
+
 #include <cmath>
 #include <string>
 #include <vector>
@@ -13,10 +16,6 @@
 #include <glm/gtc/type_ptr.hpp>
 #include <GLFW/glfw3.h>
 #include <IL/il.h>
-
-void windowResizeCallback(GLFWwindow* window, int width, int height){
-    glViewport(0, 0, width, height);
-}
 
 void debugFunction(GLenum source​, GLenum type​, GLuint id​, GLenum severity​, GLsizei length​, const GLchar* message​, const void* userParam​){
     if (severity​ != GL_DEBUG_SEVERITY_NOTIFICATION){
@@ -57,13 +56,29 @@ void loadTextureData(GLuint textureId, std::filesystem::path filePath){
     ilDeleteImage(loadedImage);
 }
 
+void enableCameraLook(GLFWwindow* window){
+    glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+    CameraManager::activateMouseMovementCallback();
+}
+
+void disableCameraLook(GLFWwindow* window){
+    glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
+    CameraManager::removeMouseMovementCallback();
+}
+
 int main(){
     std::string windowTitle = "OpenGL Tutorial";
     float horizontalFOV = 90.0f;
     float aspectRatio = 16.0f / 9.0f;
     int defaultWindowHeight = 720;
     int defaultWindowWidth = defaultWindowHeight * aspectRatio;
-    float rotateSpeed = 180.0f;
+    float rotateSpeed = 90.0f;
+    float cameraSpeed = 3.0f;
+
+    Camera camera({-5.0f, 0.0f, 0.0f}, {1.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 1.0f});
+    glm::mat4 model;
+    glm::mat4 view;
+    glm::mat4 projection;
 
     GLuint vertexShader;
     GLuint fragmentShader;
@@ -118,11 +133,16 @@ int main(){
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
     glfwWindowHint(GLFW_OPENGL_DEBUG_CONTEXT, GLFW_TRUE);
-    glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
     GLFWwindow* window = glfwCreateWindow(defaultWindowWidth, defaultWindowHeight, windowTitle.c_str(), nullptr, nullptr);
     glfwMakeContextCurrent(window);
     gladLoadGLLoader((GLADloadproc)glfwGetProcAddress);
-    glfwSetFramebufferSizeCallback(window, windowResizeCallback);
+    CameraManager::setActiveWindow(window);
+    CameraManager::activateViewportResizeCallback();
+    glfwSetWindowSize(window, defaultWindowWidth, defaultWindowHeight);
+    enableCameraLook(window);
+    CameraManager::setViewportSize(defaultWindowWidth, defaultWindowHeight);
+    CameraManager::setHorizontalFOV(horizontalFOV);
+    CameraManager::setActiveCamera(&camera);
 
     ilInit();
     ilEnable(IL_ORIGIN_SET);
@@ -177,15 +197,17 @@ int main(){
     loadTextureData(triangleBackgroundTexture, "assets/textures/tex1.png");
     loadTextureData(triangleForegroundTexture, "assets/textures/tex2.png");
 
-    glm::mat4 view = glm::translate(glm::mat4(1.0f), {0.0f, 0.0f, -5.0f,});
-    glm::mat4 projection = glm::perspective(glm::radians(horizontalFOV / aspectRatio), aspectRatio, 0.1f, 100.0f);
+    float forwardAxisValue, rightAxisValue, upAxisValue;
 
     float previousTime = 0.0f;
 
     while (not glfwWindowShouldClose(window)){
-
         float currentTime = glfwGetTime();
-        float deltaTime = previousTime - currentTime;
+        float deltaTime = currentTime - previousTime;
+
+        forwardAxisValue = 0.0f;
+        rightAxisValue = 0.0f;
+        upAxisValue = 0.0f;
 
         if (glfwGetKey(window, GLFW_KEY_L) == GLFW_PRESS){
             glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
@@ -193,8 +215,45 @@ int main(){
         if (glfwGetKey(window, GLFW_KEY_F) == GLFW_PRESS){
             glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
         }
+        if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS){
+            disableCameraLook(window);
+        }
+        if (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS){
+            enableCameraLook(window);
+        }
+        if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS){
+            forwardAxisValue += 1.0f;
+        }
+        if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS){
+            forwardAxisValue -= 1.0f;
+        }
+        if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS){
+            rightAxisValue += 1.0f;
+        }
+        if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS){
+            rightAxisValue -= 1.0f;
+        }
+        if (glfwGetKey(window, GLFW_KEY_V) == GLFW_PRESS){
+            upAxisValue -= 1.0f;
+        }
+        if (glfwGetKey(window, GLFW_KEY_B) == GLFW_PRESS){
+            upAxisValue += 1.0f;
+        }
 
-        glm::mat4 model = glm::rotate(glm::mat4(1.0f), glm::radians(currentTime * rotateSpeed), {0.0f, 1.0f, 0.0f});
+        auto cameraForward = camera.getCameraForwardVector();
+        auto cameraRight = camera.getCameraRightVector();
+        auto cameraUp = camera.getCameraUpVector();
+        cameraForward.z = 0.0f;
+        cameraRight.z = 0.0f;
+        cameraUp.x = cameraUp.y = 0.0f;
+        glm::vec3 inputVector = cameraForward * forwardAxisValue + cameraRight * rightAxisValue + cameraUp * upAxisValue;
+        if (glm::length(inputVector) > 0.0f){
+            camera.addLocationOffset(glm::normalize(inputVector) * deltaTime * cameraSpeed);
+        }
+
+        model = glm::rotate(glm::mat4(1.0f), glm::radians(currentTime * rotateSpeed), {0.0f, 0.0f, 1.0f});
+        view = CameraManager::getViewMatrix();
+        projection = CameraManager::getProjectionMatrix();
 
         glClearColor(0.1f, 0.3f, 0.3f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -219,6 +278,9 @@ int main(){
 
         previousTime = currentTime;
     }
+
+    CameraManager::setActiveCamera(nullptr);
+    CameraManager::setActiveWindow(nullptr);
 
     glDeleteTextures(1, &triangleBackgroundTexture);
     glDeleteTextures(1, &triangleForegroundTexture);

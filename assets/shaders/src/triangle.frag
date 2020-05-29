@@ -10,5 +10,5 @@ layout (location = 2) uniform sampler2D foreTex;
 
 void main()
 {
-    ofColor = mix(texture(backTex, fTex) * vec4(fColor, 1.0f), texture(foreTex, fTex), (sin(time) + 1.0f) * 0.5f);
+    ofColor = vec4(fColor, 1.0f);
 }

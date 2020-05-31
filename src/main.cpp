@@ -66,6 +66,26 @@ void disableCameraLook(GLFWwindow* window){
     CameraManager::removeMouseMovementCallback();
 }
 
+GLuint createShader(GLenum shaderType, std::string shaderSource){
+    const char * shaderSourceCStr = shaderSource.c_str();
+    GLuint shader = glCreateShader(shaderType);
+    glShaderSource(shader, 1, &shaderSourceCStr, nullptr);
+    glCompileShader(shader);
+    return shader;
+}
+
+GLuint createProgram(std::vector<GLuint> shaders){
+    GLuint program = glCreateProgram();
+    for (auto& shader : shaders){
+        glAttachShader(program, shader);
+    }
+    glLinkProgram(program);
+    for (auto& shader : shaders){
+        glDetachShader(program, shader);
+    }
+    return program;
+}
+
 int main(){
     std::string windowTitle = "OpenGL Tutorial";
     float horizontalFOV = 90.0f;
@@ -75,58 +95,99 @@ int main(){
     float rotateSpeed = 90.0f;
     float cameraSpeed = 3.0f;
 
-    Camera camera({-5.0f, 0.0f, 0.0f}, {1.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 1.0f});
-    glm::mat4 model;
+    glm::vec3 cameraStartPos = {5.0f, 5.0f, 3.0f};
+    glm::vec3 cameraStartLookDirection = -cameraStartPos;
+    Camera camera(cameraStartPos, cameraStartLookDirection, {0.0f, 0.0f, 1.0f});
+    glm::mat4 cubeModel;
+    glm::mat4 lampModel;
     glm::mat4 view;
     glm::mat4 projection;
+    glm::mat3 normal;
 
-    GLuint vertexShader;
-    GLuint fragmentShader;
-    GLuint triangleShaderProgram;
-    GLuint vertexVBO;
-    GLuint vertexEBO;
-    GLuint triangleVAO;
-    GLuint timeUniformLocation;
-    GLuint backgroundTextureUniformLocation;
-    GLuint foregroundTextureUniformLocation;
-    GLuint modelMatrixUniformLocation;
-    GLuint viewMatrixUniformLocation;
-    GLuint projectionMatrixUniformLocation;
-    GLuint triangleBackgroundTexture;
-    GLuint triangleForegroundTexture;
+    GLfloat cubeAmbient = 0.1f;
+    GLfloat cubeSpecular = 0.5f;
+    GLfloat cubeShininess = 32.0f;
+    glm::vec3 cubeColor = {1.0f, 0.5f, 0.31f};
+
+    glm::vec3 lightPos = {0.0f, 0.0f, 3.0f};
+    glm::vec3 lightColor = {1.0f, 1.0f, 0.8f};
+    glm::vec3 lampScale = 0.2f * glm::vec3(1.0f, 1.0f, 1.0f);
+    GLfloat lightDayDuration = 300.0f;
+    GLfloat lightAngularVelocity = 360.0f / lightDayDuration;
+
+    GLuint cubeVertexShader, cubeFragmentShader;
+    GLuint cubeShaderProgram;
+    GLuint cubeVertexVBO;
+    GLuint cubeVertexEBO;
+    GLuint cubeVAO;
+    GLuint lampVertexShader, lampFragmentShader;
+    GLuint lampShaderProgram;
+    GLuint lampVAO;
+
+    // Cube uniform locations
+
+    GLuint modelMatrixUniformLocation, viewMatrixUniformLocation, projectionMatrixUniformLocation, normalMatrixUniformLocation;
+    GLuint lightColorUniformLocation, lightPosUniformLocation, cameraPosUniformLocation;
+    GLuint materialAmbientUniformLocation, materialSpecularUniformLocation, materialShininessUniformLocation, materialColorUniformLocation;
+
+    // Lamp uniform locations
+
+    GLuint lampModelMatrixUniformLocation, lampViewMatrixUniformLocation, lampProjectionMatrixUniformLocation;
+    GLuint lampLightColorUniformLocation;
 
     std::vector<GLfloat> vertexData =
     {
-         1.0f,  1.0f,  1.0f, 1.0f, 0.f, 0.0f, 1.0f, 1.0f,
-         1.0f, -1.0f,  1.0f, 0.0f, 1.f, 0.0f, 1.0f, 1.0f,
-        -1.0f, -1.0f,  1.0f, 0.0f, 0.f, 1.0f, 1.0f, 1.0f,
-        -1.0f,  1.0f,  1.0f, 1.0f, 1.f, 1.0f, 1.0f, 1.0f,
-         1.0f,  1.0f, -1.0f, 0.0f, 0.f, 1.0f, 1.0f, 1.0f,
-         1.0f, -1.0f, -1.0f, 1.0f, 1.f, 1.0f, 1.0f, 1.0f,
-        -1.0f, -1.0f, -1.0f, 1.0f, 0.f, 0.0f, 1.0f, 1.0f,
-        -1.0f,  1.0f, -1.0f, 0.0f, 1.f, 0.0f, 1.0f, 1.0f,
+          1.0f,  1.0f,  1.0f,  1.0f,  0.0f,  0.0f,
+          1.0f, -1.0f,  1.0f,  1.0f,  0.0f,  0.0f,
+          1.0f, -1.0f, -1.0f,  1.0f,  0.0f,  0.0f,
+          1.0f,  1.0f, -1.0f,  1.0f,  0.0f,  0.0f,
+
+         -1.0f,  1.0f,  1.0f, -1.0f,  0.0f,  0.0f,
+         -1.0f, -1.0f,  1.0f, -1.0f,  0.0f,  0.0f,
+         -1.0f, -1.0f, -1.0f, -1.0f,  0.0f,  0.0f,
+         -1.0f,  1.0f, -1.0f, -1.0f,  0.0f,  0.0f,
+
+         -1.0f,  1.0f,  1.0f,  0.0f,  1.0f,  0.0f,
+          1.0f,  1.0f,  1.0f,  0.0f,  1.0f,  0.0f,
+          1.0f,  1.0f, -1.0f,  0.0f,  1.0f,  0.0f,
+         -1.0f,  1.0f, -1.0f,  0.0f,  1.0f,  0.0f,
+
+         -1.0f, -1.0f,  1.0f,  0.0f, -1.0f,  0.0f,
+          1.0f, -1.0f,  1.0f,  0.0f, -1.0f,  0.0f,
+          1.0f, -1.0f, -1.0f,  0.0f, -1.0f,  0.0f,
+         -1.0f, -1.0f, -1.0f,  0.0f, -1.0f,  0.0f,
+
+          1.0f,  1.0f,  1.0f,  0.0f,  0.0f,  1.0f,
+          1.0f, -1.0f,  1.0f,  0.0f,  0.0f,  1.0f,
+         -1.0f, -1.0f,  1.0f,  0.0f,  0.0f,  1.0f,
+         -1.0f,  1.0f,  1.0f,  0.0f,  0.0f,  1.0f,
+
+          1.0f,  1.0f, -1.0f,  0.0f,  0.0f, -1.0f,
+          1.0f, -1.0f, -1.0f,  0.0f,  0.0f, -1.0f,
+         -1.0f, -1.0f, -1.0f,  0.0f,  0.0f, -1.0f,
+         -1.0f,  1.0f, -1.0f,  0.0f,  0.0f, -1.0f,
     };
 
     std::vector<GLuint> vertexIndices =
     {
-        0, 1, 2,
-        2, 3, 0,
-        0, 1, 4,
-        1, 4, 5,
-        1, 2, 6,
-        1, 5, 6,
-        2, 3, 7,
-        2, 6, 7,
-        0, 3, 7,
-        0, 4, 7,
-        4, 5, 6,
-        4, 7, 6,
+         0,  1,  2,
+         2,  3,  0,
+         4,  5,  6,
+         6,  7,  4,
+         8,  9, 10,
+        10, 11,  8,
+        12, 13, 14,
+        14, 15, 12,
+        16, 17, 18,
+        18, 19, 16,
+        20, 21, 22,
+        22, 23, 20,
     };
 
-    auto vertexShaderSource = loadShaderSource("assets/shaders/triangle.vert");
-    auto fragmentShaderSource = loadShaderSource("assets/shaders/triangle.frag");
-    auto vertexShaderSourceCStr = vertexShaderSource.c_str();
-    auto fragmentShaderSourceCStr = fragmentShaderSource.c_str();
+    auto cubeVertexShaderSource = loadShaderSource("assets/shaders/triangle.vert");
+    auto cubeFragmentShaderSource = loadShaderSource("assets/shaders/triangle.frag");
+    auto lampVertexShaderSource = loadShaderSource("assets/shaders/lamp.vert");
+    auto lampFragmentShaderSource = loadShaderSource("assets/shaders/lamp.frag");
 
     glfwInit();
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
@@ -155,47 +216,68 @@ int main(){
     }
     glEnable(GL_DEPTH_TEST);
 
-    vertexShader = glCreateShader(GL_VERTEX_SHADER);
-    fragmentShader = glCreateShader(GL_FRAGMENT_SHADER);
-    glShaderSource(vertexShader, 1, &vertexShaderSourceCStr, nullptr);
-    glCompileShader(vertexShader);
-    glShaderSource(fragmentShader, 1, &fragmentShaderSourceCStr, nullptr);
-    glCompileShader(fragmentShader);
-    triangleShaderProgram = glCreateProgram();
-    glAttachShader(triangleShaderProgram, vertexShader);
-    glAttachShader(triangleShaderProgram, fragmentShader);
-    glLinkProgram(triangleShaderProgram);
-    glDetachShader(triangleShaderProgram, vertexShader);
-    glDetachShader(triangleShaderProgram, fragmentShader);
-    glDeleteShader(vertexShader);
-    glDeleteShader(fragmentShader);
+    // Create cube shader program
 
-    timeUniformLocation = glGetUniformLocation(triangleShaderProgram, "time");
-    backgroundTextureUniformLocation = glGetUniformLocation(triangleShaderProgram, "backTex");
-    foregroundTextureUniformLocation = glGetUniformLocation(triangleShaderProgram, "foreTex");
-    modelMatrixUniformLocation = glGetUniformLocation(triangleShaderProgram, "model");
-    viewMatrixUniformLocation = glGetUniformLocation(triangleShaderProgram, "view");
-    projectionMatrixUniformLocation = glGetUniformLocation(triangleShaderProgram, "projection");
+    cubeVertexShader = createShader(GL_VERTEX_SHADER, cubeVertexShaderSource);
+    cubeFragmentShader = createShader(GL_FRAGMENT_SHADER, cubeFragmentShaderSource);
+    cubeShaderProgram = createProgram({cubeVertexShader, cubeFragmentShader});
+    glDeleteShader(cubeVertexShader);
+    glDeleteShader(cubeFragmentShader);
 
-    glGenVertexArrays(1, &triangleVAO);
-    glGenBuffers(1, &vertexVBO);
-    glGenBuffers(1, &vertexEBO);
-    glBindVertexArray(triangleVAO);
-    glBindBuffer(GL_ARRAY_BUFFER, vertexVBO);
+    // Get cube shader uniform locations
+
+    modelMatrixUniformLocation = glGetUniformLocation(cubeShaderProgram, "model");
+    viewMatrixUniformLocation = glGetUniformLocation(cubeShaderProgram, "view");
+    projectionMatrixUniformLocation = glGetUniformLocation(cubeShaderProgram, "projection");
+    normalMatrixUniformLocation = glGetUniformLocation(cubeShaderProgram, "normal");
+
+    lightPosUniformLocation = glGetUniformLocation(cubeShaderProgram, "lightPos");
+    lightColorUniformLocation = glGetUniformLocation(cubeShaderProgram, "lightColor");
+    cameraPosUniformLocation = glGetUniformLocation(cubeShaderProgram, "cameraPos");
+    materialAmbientUniformLocation = glGetUniformLocation(cubeShaderProgram, "material.ambient");
+    materialSpecularUniformLocation = glGetUniformLocation(cubeShaderProgram, "material.specular");
+    materialShininessUniformLocation = glGetUniformLocation(cubeShaderProgram, "material.shininess");
+    materialColorUniformLocation = glGetUniformLocation(cubeShaderProgram, "material.color");
+
+    // Create lamp shader program
+
+    lampVertexShader = createShader(GL_VERTEX_SHADER, lampVertexShaderSource);
+    lampFragmentShader = createShader(GL_FRAGMENT_SHADER, lampFragmentShaderSource);
+    lampShaderProgram = createProgram({lampVertexShader, lampFragmentShader});
+    glDeleteShader(lampVertexShader);
+    glDeleteShader(lampFragmentShader);
+
+    // Get lamp shader uniform locations
+
+    lampModelMatrixUniformLocation = glGetUniformLocation(lampShaderProgram, "model");
+    lampViewMatrixUniformLocation = glGetUniformLocation(lampShaderProgram, "view");
+    lampProjectionMatrixUniformLocation = glGetUniformLocation(lampShaderProgram, "projection");
+
+    lampLightColorUniformLocation = glGetUniformLocation(lampShaderProgram, "lightColor");
+
+    // Setup cube data
+
+    glGenVertexArrays(1, &cubeVAO);
+    glGenBuffers(1, &cubeVertexVBO);
+    glGenBuffers(1, &cubeVertexEBO);
+    glBindVertexArray(cubeVAO);
+    glBindBuffer(GL_ARRAY_BUFFER, cubeVertexVBO);
     glBufferData(GL_ARRAY_BUFFER, sizeof (GLfloat) * vertexData.size(), vertexData.data(), GL_STATIC_DRAW);
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(GLfloat), nullptr);
-    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(GLfloat), (void *) (3 * sizeof(GLfloat)));
-    glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(GLfloat), (void *) (6 * sizeof(GLfloat)));
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(GLfloat), nullptr);
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(GLfloat), (void *) (3 * sizeof(GLfloat)));
     glEnableVertexAttribArray(0);
     glEnableVertexAttribArray(1);
-    glEnableVertexAttribArray(2);
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, vertexEBO);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, cubeVertexEBO);
     glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof (GLuint) * vertexIndices.size(), vertexIndices.data(), GL_STATIC_DRAW);
 
-    glGenTextures(1, &triangleBackgroundTexture);
-    glGenTextures(1, &triangleForegroundTexture);
-    loadTextureData(triangleBackgroundTexture, "assets/textures/tex1.png");
-    loadTextureData(triangleForegroundTexture, "assets/textures/tex2.png");
+    // Setup lamp data
+
+    glGenVertexArrays(1, &lampVAO);
+    glBindVertexArray(lampVAO);
+    glBindBuffer(GL_ARRAY_BUFFER, cubeVertexVBO);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(GLfloat), nullptr);
+    glEnableVertexAttribArray(0);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, cubeVertexEBO);
 
     float forwardAxisValue, rightAxisValue, upAxisValue;
 
@@ -251,26 +333,51 @@ int main(){
             camera.addLocationOffset(glm::normalize(inputVector) * deltaTime * cameraSpeed);
         }
 
-        model = glm::rotate(glm::mat4(1.0f), glm::radians(currentTime * rotateSpeed), {0.0f, 0.0f, 1.0f});
+        cubeModel = glm::rotate(glm::mat4(1.0f), glm::radians(currentTime * rotateSpeed), {0.0f, 0.0f, 1.0f});
         view = CameraManager::getViewMatrix();
         projection = CameraManager::getProjectionMatrix();
+        normal = glm::transpose(glm::inverse(glm::mat3(cubeModel)));
 
-        glClearColor(0.1f, 0.3f, 0.3f, 1.0f);
+        glm::mat4 lightScale = glm::scale(glm::mat4(1.0f), lampScale);
+        glm::mat4 lightRotate = glm::rotate(glm::mat4(1.0f), glm::radians(currentTime * lightAngularVelocity), {1.0f, 0.0f, 0.0f});
+        glm::mat4 lightTranslate = glm::translate(glm::mat4(1.0f), lightPos);
+
+        lampModel = lightRotate * lightTranslate * lightScale;
+
+        glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-        glUseProgram(triangleShaderProgram);
-        glUniform1f(timeUniformLocation, glfwGetTime());
-        glUniform1i(backgroundTextureUniformLocation, 0);
-        glUniform1i(foregroundTextureUniformLocation, 1);
-        glUniformMatrix4fv(modelMatrixUniformLocation, 1, GL_FALSE, glm::value_ptr(model));
+        // Draw cube
+
+        glUseProgram(cubeShaderProgram);
+
+        glUniformMatrix4fv(modelMatrixUniformLocation, 1, GL_FALSE, glm::value_ptr(cubeModel));
         glUniformMatrix4fv(viewMatrixUniformLocation, 1, GL_FALSE, glm::value_ptr(view));
         glUniformMatrix4fv(projectionMatrixUniformLocation, 1, GL_FALSE, glm::value_ptr(projection));
-        glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, triangleBackgroundTexture);
-        glActiveTexture(GL_TEXTURE1);
-        glBindTexture(GL_TEXTURE_2D, triangleForegroundTexture);
+        glUniformMatrix3fv(normalMatrixUniformLocation, 1, GL_FALSE, glm::value_ptr(normal));
 
-        glBindVertexArray(triangleVAO);
+        glUniform3fv(lightColorUniformLocation, 1, glm::value_ptr(lightColor));
+        glUniform3fv(lightPosUniformLocation, 1, glm::value_ptr(lightRotate * glm::vec4(lightPos, 1.0f)));
+        glUniform3fv(cameraPosUniformLocation, 1, glm::value_ptr(camera.getCameraPos()));
+        glUniform1f(materialAmbientUniformLocation, cubeAmbient);
+        glUniform1f(materialSpecularUniformLocation, cubeSpecular);
+        glUniform1f(materialShininessUniformLocation, cubeShininess);
+        glUniform3fv(materialColorUniformLocation, 1, glm::value_ptr(cubeColor));
+
+        glBindVertexArray(cubeVAO);
+        glDrawElements(GL_TRIANGLES, 36, GL_UNSIGNED_INT, nullptr);
+
+        // Draw lamp
+
+        glUseProgram(lampShaderProgram);
+
+        glUniformMatrix4fv(lampModelMatrixUniformLocation, 1, GL_FALSE, glm::value_ptr(lampModel));
+        glUniformMatrix4fv(lampViewMatrixUniformLocation, 1, GL_FALSE, glm::value_ptr(view));
+        glUniformMatrix4fv(lampProjectionMatrixUniformLocation, 1, GL_FALSE, glm::value_ptr(projection));
+
+        glUniform3fv(lampLightColorUniformLocation, 1, glm::value_ptr(lightColor));
+
+        glBindVertexArray(lampVAO);
         glDrawElements(GL_TRIANGLES, 36, GL_UNSIGNED_INT, nullptr);
 
         glfwSwapBuffers(window);
@@ -282,12 +389,12 @@ int main(){
     CameraManager::setActiveCamera(nullptr);
     CameraManager::setActiveWindow(nullptr);
 
-    glDeleteTextures(1, &triangleBackgroundTexture);
-    glDeleteTextures(1, &triangleForegroundTexture);
-    glDeleteVertexArrays(1, &triangleVAO);
-    glDeleteBuffers(1, &vertexVBO);
-    glDeleteBuffers(1, &vertexEBO);
-    glDeleteProgram(triangleShaderProgram);
+    glDeleteVertexArrays(1, &cubeVAO);
+    glDeleteVertexArrays(1, &lampVAO);
+    glDeleteBuffers(1, &cubeVertexVBO);
+    glDeleteBuffers(1, &cubeVertexEBO);
+    glDeleteProgram(cubeShaderProgram);
+    glDeleteProgram(lampShaderProgram);
 
     glfwDestroyWindow(window);
     glfwTerminate();

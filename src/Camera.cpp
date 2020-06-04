@@ -70,5 +70,3 @@ void Camera::updateCameraRightVector(){
 void Camera::updateCameraUpVector(){
     this->cameraUpVector = this->yawRotationMatrix * this->pitchRotationMatrix * glm::vec4(this->cameraDefaultUpVector, 0.0f);
 }
-
-

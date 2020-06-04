@@ -105,13 +105,15 @@ int main(){
     glm::mat4 projection;
     glm::mat3 normal;
 
-    GLfloat cubeAmbient = 0.1f;
-    GLfloat cubeSpecular = 0.5f;
+    std::filesystem::path cubeDiffuseMapPath = "assets/textures/container2.png";
+    std::filesystem::path cubeSpecularMapPath = "assets/textures/container2_specular.png";
     GLfloat cubeShininess = 32.0f;
-    glm::vec3 cubeColor = {1.0f, 0.5f, 0.31f};
 
     glm::vec3 lightPos = {0.0f, 0.0f, 3.0f};
-    glm::vec3 lightColor = {1.0f, 1.0f, 0.8f};
+    glm::vec3 lightDiffuse = {1.0f, 1.0f, 0.8f};
+    glm::vec3 lightAmbient = lightDiffuse * 0.1f;
+    glm::vec3 lightSpecular = {1.0f, 1.0f, 1.0f};
+
     glm::vec3 lampScale = 0.2f * glm::vec3(1.0f, 1.0f, 1.0f);
     GLfloat lightDayDuration = 300.0f;
     GLfloat lightAngularVelocity = 360.0f / lightDayDuration;
@@ -121,52 +123,42 @@ int main(){
     GLuint cubeVertexVBO;
     GLuint cubeVertexEBO;
     GLuint cubeVAO;
+    GLuint cubeDiffuseMap, cubeSpecularMap;
     GLuint lampVertexShader, lampFragmentShader;
     GLuint lampShaderProgram;
     GLuint lampVAO;
 
-    // Cube uniform locations
-
-    GLuint modelMatrixUniformLocation, viewMatrixUniformLocation, projectionMatrixUniformLocation, normalMatrixUniformLocation;
-    GLuint lightColorUniformLocation, lightPosUniformLocation, cameraPosUniformLocation;
-    GLuint materialAmbientUniformLocation, materialSpecularUniformLocation, materialShininessUniformLocation, materialColorUniformLocation;
-
-    // Lamp uniform locations
-
-    GLuint lampModelMatrixUniformLocation, lampViewMatrixUniformLocation, lampProjectionMatrixUniformLocation;
-    GLuint lampLightColorUniformLocation;
-
     std::vector<GLfloat> vertexData =
     {
-          1.0f,  1.0f,  1.0f,  1.0f,  0.0f,  0.0f,
-          1.0f, -1.0f,  1.0f,  1.0f,  0.0f,  0.0f,
-          1.0f, -1.0f, -1.0f,  1.0f,  0.0f,  0.0f,
-          1.0f,  1.0f, -1.0f,  1.0f,  0.0f,  0.0f,
+          1.0f,  1.0f,  1.0f,  1.0f,  0.0f,  0.0f, 1.0f, 1.0f,
+          1.0f, -1.0f,  1.0f,  1.0f,  0.0f,  0.0f, 1.0f, 0.0f,
+          1.0f, -1.0f, -1.0f,  1.0f,  0.0f,  0.0f, 0.0f, 0.0f,
+          1.0f,  1.0f, -1.0f,  1.0f,  0.0f,  0.0f, 0.0f, 1.0f,
 
-         -1.0f,  1.0f,  1.0f, -1.0f,  0.0f,  0.0f,
-         -1.0f, -1.0f,  1.0f, -1.0f,  0.0f,  0.0f,
-         -1.0f, -1.0f, -1.0f, -1.0f,  0.0f,  0.0f,
-         -1.0f,  1.0f, -1.0f, -1.0f,  0.0f,  0.0f,
+         -1.0f,  1.0f,  1.0f, -1.0f,  0.0f,  0.0f, 1.0f, 1.0f,
+         -1.0f, -1.0f,  1.0f, -1.0f,  0.0f,  0.0f, 1.0f, 0.0f,
+         -1.0f, -1.0f, -1.0f, -1.0f,  0.0f,  0.0f, 0.0f, 0.0f,
+         -1.0f,  1.0f, -1.0f, -1.0f,  0.0f,  0.0f, 0.0f, 1.0f,
 
-         -1.0f,  1.0f,  1.0f,  0.0f,  1.0f,  0.0f,
-          1.0f,  1.0f,  1.0f,  0.0f,  1.0f,  0.0f,
-          1.0f,  1.0f, -1.0f,  0.0f,  1.0f,  0.0f,
-         -1.0f,  1.0f, -1.0f,  0.0f,  1.0f,  0.0f,
+         -1.0f,  1.0f,  1.0f,  0.0f,  1.0f,  0.0f, 1.0f, 1.0f,
+          1.0f,  1.0f,  1.0f,  0.0f,  1.0f,  0.0f, 1.0f, 0.0f,
+          1.0f,  1.0f, -1.0f,  0.0f,  1.0f,  0.0f, 0.0f, 0.0f,
+         -1.0f,  1.0f, -1.0f,  0.0f,  1.0f,  0.0f, 0.0f, 1.0f,
 
-         -1.0f, -1.0f,  1.0f,  0.0f, -1.0f,  0.0f,
-          1.0f, -1.0f,  1.0f,  0.0f, -1.0f,  0.0f,
-          1.0f, -1.0f, -1.0f,  0.0f, -1.0f,  0.0f,
-         -1.0f, -1.0f, -1.0f,  0.0f, -1.0f,  0.0f,
+         -1.0f, -1.0f,  1.0f,  0.0f, -1.0f,  0.0f, 1.0f, 1.0f,
+          1.0f, -1.0f,  1.0f,  0.0f, -1.0f,  0.0f, 1.0f, 0.0f,
+          1.0f, -1.0f, -1.0f,  0.0f, -1.0f,  0.0f, 0.0f, 0.0f,
+         -1.0f, -1.0f, -1.0f,  0.0f, -1.0f,  0.0f, 0.0f, 1.0f,
 
-          1.0f,  1.0f,  1.0f,  0.0f,  0.0f,  1.0f,
-          1.0f, -1.0f,  1.0f,  0.0f,  0.0f,  1.0f,
-         -1.0f, -1.0f,  1.0f,  0.0f,  0.0f,  1.0f,
-         -1.0f,  1.0f,  1.0f,  0.0f,  0.0f,  1.0f,
+          1.0f,  1.0f,  1.0f,  0.0f,  0.0f,  1.0f, 1.0f, 1.0f,
+          1.0f, -1.0f,  1.0f,  0.0f,  0.0f,  1.0f, 1.0f, 0.0f,
+         -1.0f, -1.0f,  1.0f,  0.0f,  0.0f,  1.0f, 0.0f, 0.0f,
+         -1.0f,  1.0f,  1.0f,  0.0f,  0.0f,  1.0f, 0.0f, 1.0f,
 
-          1.0f,  1.0f, -1.0f,  0.0f,  0.0f, -1.0f,
-          1.0f, -1.0f, -1.0f,  0.0f,  0.0f, -1.0f,
-         -1.0f, -1.0f, -1.0f,  0.0f,  0.0f, -1.0f,
-         -1.0f,  1.0f, -1.0f,  0.0f,  0.0f, -1.0f,
+          1.0f,  1.0f, -1.0f,  0.0f,  0.0f, -1.0f, 1.0f, 1.0f,
+          1.0f, -1.0f, -1.0f,  0.0f,  0.0f, -1.0f, 1.0f, 0.0f,
+         -1.0f, -1.0f, -1.0f,  0.0f,  0.0f, -1.0f, 0.0f, 0.0f,
+         -1.0f,  1.0f, -1.0f,  0.0f,  0.0f, -1.0f, 0.0f, 1.0f,
     };
 
     std::vector<GLuint> vertexIndices =
@@ -225,21 +217,6 @@ int main(){
     glDeleteShader(cubeVertexShader);
     glDeleteShader(cubeFragmentShader);
 
-    // Get cube shader uniform locations
-
-    modelMatrixUniformLocation = glGetUniformLocation(cubeShaderProgram, "model");
-    viewMatrixUniformLocation = glGetUniformLocation(cubeShaderProgram, "view");
-    projectionMatrixUniformLocation = glGetUniformLocation(cubeShaderProgram, "projection");
-    normalMatrixUniformLocation = glGetUniformLocation(cubeShaderProgram, "normal");
-
-    lightPosUniformLocation = glGetUniformLocation(cubeShaderProgram, "lightPos");
-    lightColorUniformLocation = glGetUniformLocation(cubeShaderProgram, "lightColor");
-    cameraPosUniformLocation = glGetUniformLocation(cubeShaderProgram, "cameraPos");
-    materialAmbientUniformLocation = glGetUniformLocation(cubeShaderProgram, "material.ambient");
-    materialSpecularUniformLocation = glGetUniformLocation(cubeShaderProgram, "material.specular");
-    materialShininessUniformLocation = glGetUniformLocation(cubeShaderProgram, "material.shininess");
-    materialColorUniformLocation = glGetUniformLocation(cubeShaderProgram, "material.color");
-
     // Create lamp shader program
 
     lampVertexShader = createShader(GL_VERTEX_SHADER, lampVertexShaderSource);
@@ -247,14 +224,6 @@ int main(){
     lampShaderProgram = createProgram({lampVertexShader, lampFragmentShader});
     glDeleteShader(lampVertexShader);
     glDeleteShader(lampFragmentShader);
-
-    // Get lamp shader uniform locations
-
-    lampModelMatrixUniformLocation = glGetUniformLocation(lampShaderProgram, "model");
-    lampViewMatrixUniformLocation = glGetUniformLocation(lampShaderProgram, "view");
-    lampProjectionMatrixUniformLocation = glGetUniformLocation(lampShaderProgram, "projection");
-
-    lampLightColorUniformLocation = glGetUniformLocation(lampShaderProgram, "lightColor");
 
     // Setup cube data
 
@@ -264,10 +233,12 @@ int main(){
     glBindVertexArray(cubeVAO);
     glBindBuffer(GL_ARRAY_BUFFER, cubeVertexVBO);
     glBufferData(GL_ARRAY_BUFFER, sizeof (GLfloat) * vertexData.size(), vertexData.data(), GL_STATIC_DRAW);
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(GLfloat), nullptr);
-    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(GLfloat), (void *) (3 * sizeof(GLfloat)));
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(GLfloat), nullptr);
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(GLfloat), (void *) (3 * sizeof(GLfloat)));
+    glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(GLfloat), (void *) (6 * sizeof(GLfloat)));
     glEnableVertexAttribArray(0);
     glEnableVertexAttribArray(1);
+    glEnableVertexAttribArray(2);
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, cubeVertexEBO);
     glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof (GLuint) * vertexIndices.size(), vertexIndices.data(), GL_STATIC_DRAW);
 
@@ -276,9 +247,14 @@ int main(){
     glGenVertexArrays(1, &lampVAO);
     glBindVertexArray(lampVAO);
     glBindBuffer(GL_ARRAY_BUFFER, cubeVertexVBO);
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(GLfloat), nullptr);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(GLfloat), nullptr);
     glEnableVertexAttribArray(0);
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, cubeVertexEBO);
+
+    glGenTextures(1, &cubeDiffuseMap);
+    glGenTextures(1, &cubeSpecularMap);
+    loadTextureData(cubeDiffuseMap, cubeDiffuseMapPath);
+    loadTextureData(cubeSpecularMap, cubeSpecularMapPath);
 
     float forwardAxisValue, rightAxisValue, upAxisValue;
 
@@ -291,6 +267,7 @@ int main(){
         forwardAxisValue = 0.0f;
         rightAxisValue = 0.0f;
         upAxisValue = 0.0f;
+
 
         if (glfwGetKey(window, GLFW_KEY_L) == GLFW_PRESS){
             glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
@@ -352,18 +329,26 @@ int main(){
 
         glUseProgram(cubeShaderProgram);
 
-        glUniformMatrix4fv(modelMatrixUniformLocation, 1, GL_FALSE, glm::value_ptr(cubeModel));
-        glUniformMatrix4fv(viewMatrixUniformLocation, 1, GL_FALSE, glm::value_ptr(view));
-        glUniformMatrix4fv(projectionMatrixUniformLocation, 1, GL_FALSE, glm::value_ptr(projection));
-        glUniformMatrix3fv(normalMatrixUniformLocation, 1, GL_FALSE, glm::value_ptr(normal));
+        glUniformMatrix4fv(glGetUniformLocation(cubeShaderProgram, "model"), 1, GL_FALSE, glm::value_ptr(cubeModel));
+        glUniformMatrix4fv(glGetUniformLocation(cubeShaderProgram, "view"), 1, GL_FALSE, glm::value_ptr(view));
+        glUniformMatrix4fv(glGetUniformLocation(cubeShaderProgram, "projection"), 1, GL_FALSE, glm::value_ptr(projection));
+        glUniformMatrix3fv(glGetUniformLocation(cubeShaderProgram, "normal"), 1, GL_FALSE, glm::value_ptr(normal));
 
-        glUniform3fv(lightColorUniformLocation, 1, glm::value_ptr(lightColor));
-        glUniform3fv(lightPosUniformLocation, 1, glm::value_ptr(lightRotate * glm::vec4(lightPos, 1.0f)));
-        glUniform3fv(cameraPosUniformLocation, 1, glm::value_ptr(camera->getCameraPos()));
-        glUniform1f(materialAmbientUniformLocation, cubeAmbient);
-        glUniform1f(materialSpecularUniformLocation, cubeSpecular);
-        glUniform1f(materialShininessUniformLocation, cubeShininess);
-        glUniform3fv(materialColorUniformLocation, 1, glm::value_ptr(cubeColor));
+        glUniform3fv(glGetUniformLocation(cubeShaderProgram, "cameraPos"), 1, glm::value_ptr(camera->getCameraPos()));
+
+        glUniform1i(glGetUniformLocation(cubeShaderProgram, "material.diffuse"), 0);
+        glUniform1i(glGetUniformLocation(cubeShaderProgram, "material.specular"), 1);
+        glUniform1f(glGetUniformLocation(cubeShaderProgram, "material.shininess"), cubeShininess);
+
+        glUniform3fv(glGetUniformLocation(cubeShaderProgram, "light.position"), 1, glm::value_ptr(glm::vec3(lightRotate * glm::vec4(lightPos, 1.0f))));
+        glUniform3fv(glGetUniformLocation(cubeShaderProgram, "light.ambient"), 1, glm::value_ptr(lightAmbient));
+        glUniform3fv(glGetUniformLocation(cubeShaderProgram, "light.diffuse"), 1, glm::value_ptr(lightDiffuse));
+        glUniform3fv(glGetUniformLocation(cubeShaderProgram, "light.specular"), 1, glm::value_ptr(lightSpecular));
+
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, cubeDiffuseMap);
+        glActiveTexture(GL_TEXTURE1);
+        glBindTexture(GL_TEXTURE_2D, cubeSpecularMap);
 
         glBindVertexArray(cubeVAO);
         glDrawElements(GL_TRIANGLES, 36, GL_UNSIGNED_INT, nullptr);
@@ -372,11 +357,11 @@ int main(){
 
         glUseProgram(lampShaderProgram);
 
-        glUniformMatrix4fv(lampModelMatrixUniformLocation, 1, GL_FALSE, glm::value_ptr(lampModel));
-        glUniformMatrix4fv(lampViewMatrixUniformLocation, 1, GL_FALSE, glm::value_ptr(view));
-        glUniformMatrix4fv(lampProjectionMatrixUniformLocation, 1, GL_FALSE, glm::value_ptr(projection));
+        glUniformMatrix4fv(glGetUniformLocation(lampShaderProgram, "model"), 1, GL_FALSE, glm::value_ptr(lampModel));
+        glUniformMatrix4fv(glGetUniformLocation(lampShaderProgram, "view"), 1, GL_FALSE, glm::value_ptr(view));
+        glUniformMatrix4fv(glGetUniformLocation(lampShaderProgram, "projection"), 1, GL_FALSE, glm::value_ptr(projection));
 
-        glUniform3fv(lampLightColorUniformLocation, 1, glm::value_ptr(lightColor));
+        glUniform3fv(glGetUniformLocation(lampShaderProgram, "lightColor"), 1, glm::value_ptr(lightDiffuse));
 
         glBindVertexArray(lampVAO);
         glDrawElements(GL_TRIANGLES, 36, GL_UNSIGNED_INT, nullptr);
@@ -390,6 +375,8 @@ int main(){
     CameraManager::setActiveCamera(nullptr);
     CameraManager::setActiveWindow(nullptr);
 
+    glDeleteTextures(1, &cubeDiffuseMap);
+    glDeleteTextures(1, &cubeSpecularMap);
     glDeleteVertexArrays(1, &cubeVAO);
     glDeleteVertexArrays(1, &lampVAO);
     glDeleteBuffers(1, &cubeVertexVBO);

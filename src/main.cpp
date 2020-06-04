@@ -10,6 +10,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iterator>
+#include <memory>
 
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
@@ -97,7 +98,7 @@ int main(){
 
     glm::vec3 cameraStartPos = {5.0f, 5.0f, 3.0f};
     glm::vec3 cameraStartLookDirection = -cameraStartPos;
-    Camera camera(cameraStartPos, cameraStartLookDirection, {0.0f, 0.0f, 1.0f});
+    auto camera = std::make_shared<Camera>(cameraStartPos, cameraStartLookDirection, glm::vec3(0.0f, 0.0f, 1.0f));
     glm::mat4 cubeModel;
     glm::mat4 lampModel;
     glm::mat4 view;
@@ -203,7 +204,7 @@ int main(){
     enableCameraLook(window);
     CameraManager::setViewportSize(defaultWindowWidth, defaultWindowHeight);
     CameraManager::setHorizontalFOV(horizontalFOV);
-    CameraManager::setActiveCamera(&camera);
+    CameraManager::setActiveCamera(camera);
 
     ilInit();
     ilEnable(IL_ORIGIN_SET);
@@ -322,15 +323,15 @@ int main(){
             upAxisValue += 1.0f;
         }
 
-        auto cameraForward = camera.getCameraForwardVector();
-        auto cameraRight = camera.getCameraRightVector();
-        auto cameraUp = camera.getCameraUpVector();
+        auto cameraForward = camera->getCameraForwardVector();
+        auto cameraRight = camera->getCameraRightVector();
+        auto cameraUp = camera->getCameraUpVector();
         cameraForward.z = 0.0f;
         cameraRight.z = 0.0f;
         cameraUp.x = cameraUp.y = 0.0f;
         glm::vec3 inputVector = cameraForward * forwardAxisValue + cameraRight * rightAxisValue + cameraUp * upAxisValue;
         if (glm::length(inputVector) > 0.0f){
-            camera.addLocationOffset(glm::normalize(inputVector) * deltaTime * cameraSpeed);
+            camera->addLocationOffset(glm::normalize(inputVector) * deltaTime * cameraSpeed);
         }
 
         cubeModel = glm::rotate(glm::mat4(1.0f), glm::radians(currentTime * rotateSpeed), {0.0f, 0.0f, 1.0f});
@@ -358,7 +359,7 @@ int main(){
 
         glUniform3fv(lightColorUniformLocation, 1, glm::value_ptr(lightColor));
         glUniform3fv(lightPosUniformLocation, 1, glm::value_ptr(lightRotate * glm::vec4(lightPos, 1.0f)));
-        glUniform3fv(cameraPosUniformLocation, 1, glm::value_ptr(camera.getCameraPos()));
+        glUniform3fv(cameraPosUniformLocation, 1, glm::value_ptr(camera->getCameraPos()));
         glUniform1f(materialAmbientUniformLocation, cubeAmbient);
         glUniform1f(materialSpecularUniformLocation, cubeSpecular);
         glUniform1f(materialShininessUniformLocation, cubeShininess);

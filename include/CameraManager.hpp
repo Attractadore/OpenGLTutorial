@@ -1,6 +1,8 @@
 #pragma once
 #include <glm/glm.hpp>
 
+#include <memory>
+
 class Camera;
 class GLFWwindow;
 
@@ -15,7 +17,7 @@ public:
     static void activateViewportResizeCallback();
     static void removeViewportResizeCallback();
 
-    static void setActiveCamera(Camera* newCamera);
+    static void setActiveCamera(std::shared_ptr<Camera> newCamera);
     static void setActiveWindow(GLFWwindow* window);
     static void setViewportSize(int width, int height);
     static void setHorizontalFOV(float horizontalFOV);
@@ -30,7 +32,7 @@ public:
     static glm::mat4 getProjectionMatrix();
 
 private:
-    static Camera* currentCamera;
+    static std::weak_ptr<Camera> currentCamera;
     static GLFWwindow* currentWindow;
     static float mouseX;
     static float mouseY;

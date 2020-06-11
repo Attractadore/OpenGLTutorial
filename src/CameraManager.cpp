@@ -6,7 +6,7 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <GLFW/glfw3.h>
 
-Camera* CameraManager::currentCamera = nullptr;
+std::weak_ptr<Camera> CameraManager::currentCamera;
 GLFWwindow* CameraManager::currentWindow = nullptr;
 float CameraManager::mouseX = 0.0f;
 float CameraManager::mouseY = 0.0f;
@@ -21,7 +21,7 @@ float CameraManager::verticalFOV = CameraManager::horizontalFOV / aspectRatio;
 float CameraManager::nearPlane = 0.1f;
 float CameraManager::farPlane = 100.0f;
 
-void CameraManager::setActiveCamera(Camera *newCamera){
+void CameraManager::setActiveCamera(std::shared_ptr<Camera> newCamera){
     CameraManager::currentCamera = newCamera;
 }
 
@@ -108,26 +108,27 @@ void CameraManager::viewportResizeCallback(GLFWwindow *window, int width, int he
 }
 
 void CameraManager::addCameraYawInput(float degrees){
-    if (!CameraManager::currentCamera){
+    if (CameraManager::currentCamera.expired()){
         return;
     }
-    CameraManager::currentCamera->addYaw(degrees);
+    CameraManager::currentCamera.lock()->addYaw(degrees);
 }
 
 void CameraManager::addCameraPitchInput(float degrees){
-    if (!CameraManager::currentCamera){
+    if (CameraManager::currentCamera.expired()){
         return;
     }
-    CameraManager::currentCamera->addPitch(degrees);
+    CameraManager::currentCamera.lock()->addPitch(degrees);
 }
 
 glm::mat4 CameraManager::getViewMatrix(){
-    if (!CameraManager::currentCamera){
+    if (CameraManager::currentCamera.expired()){
         return glm::mat4(1.0f);
     }
-    auto cameraPos = CameraManager::currentCamera->getCameraPos();
-    auto cameraForwardVector = CameraManager::currentCamera->getCameraForwardVector();
-    auto cameraUpVector = CameraManager::currentCamera->getCameraUpVector();
+    auto currentCameraPointer = CameraManager::currentCamera.lock();
+    auto cameraPos = currentCameraPointer->getCameraPos();
+    auto cameraForwardVector = currentCameraPointer->getCameraForwardVector();
+    auto cameraUpVector = currentCameraPointer->getCameraUpVector();
     return glm::lookAt(cameraPos, cameraPos + cameraForwardVector, cameraUpVector);
 }
 

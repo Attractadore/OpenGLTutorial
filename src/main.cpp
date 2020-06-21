@@ -3,6 +3,7 @@
 #include "Camera.hpp"
 #include "CameraManager.hpp"
 #include "Lights.hpp"
+#include "TextureLoader.hpp"
 
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
@@ -10,6 +11,9 @@
 #include <GLFW/glfw3.h>
 #include <IL/il.h>
 #include <fmt/format.h>
+#include <assimp/Importer.hpp>
+#include <assimp/scene.h>
+#include <assimp/postprocess.h>
 
 #include <string>
 #include <vector>
@@ -17,8 +21,23 @@
 #include <fstream>
 #include <memory>
 #include <type_traits>
+#include <unordered_map>
+#include <iterator>
+#include <iostream>
 
 #include <cmath>
+
+struct Material {
+    std::string diffuseMap;
+    std::string specularMap;
+    float shininess;
+};
+
+struct MeshData{
+    std::vector<GLfloat> vertexData;
+    std::vector<GLuint> vertexIndices;
+    Material meshMaterial;
+};
 
 void debugFunction(GLenum source​, GLenum type​, GLuint id​, GLenum severity​, GLsizei length​, const GLchar* message​, const void* userParam​){
     if (severity​ != GL_DEBUG_SEVERITY_NOTIFICATION){
@@ -35,28 +54,6 @@ std::string loadShaderSource(std::filesystem::path filePath){
     std::string fileContents(fileSize, ' ');
     is.read(fileContents.data(), fileSize);
     return fileContents;
-}
-
-void loadTextureData(GLuint textureId, std::filesystem::path filePath){
-    if (!std::filesystem::exists(filePath)){
-        return;
-    }
-    glBindTexture(GL_TEXTURE_2D, textureId);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_NEAREST);
-    ILuint loadedImage;
-    ilGenImages(1, &loadedImage);
-    ilBindImage(loadedImage);
-    ilLoadImage(filePath.c_str());
-    int width = ilGetInteger(IL_IMAGE_WIDTH);
-    int height = ilGetInteger(IL_IMAGE_HEIGHT);
-    std::vector<std::byte> imageData(width * height * 4);
-    ilCopyPixels(0, 0, 0, width, height, 1, IL_RGBA, IL_UNSIGNED_BYTE, imageData.data());
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, imageData.data());
-    glGenerateMipmap(GL_TEXTURE_2D);
-    ilDeleteImage(loadedImage);
 }
 
 void enableCameraLook(GLFWwindow* window){
@@ -179,19 +176,36 @@ void setupLamp(GLuint VAO, GLuint VBO, GLuint EBO){
     glEnableVertexAttribArray(0);
 }
 
-void setCubeUniforms(GLuint shaderProgram, float x, float y){
-    glm::mat4 cubeModel = glm::translate(glm::mat4(1.0f), {x, y, 0.0f});
-    glm::mat3 cubeNormal = glm::transpose(glm::inverse(glm::mat3(cubeModel)));
-    glUniformMatrix4fv(glGetUniformLocation(shaderProgram, "model"), 1, GL_FALSE, glm::value_ptr(cubeModel));
-    glUniformMatrix3fv(glGetUniformLocation(shaderProgram, "normal"), 1, GL_FALSE, glm::value_ptr(cubeNormal));
+void setModelUniforms(GLuint shaderProgram, const glm::mat4& model, const glm::mat3& normal, const Material& material){
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, TextureLoader::getTextureId(material.diffuseMap));
+    glActiveTexture(GL_TEXTURE1);
+    glBindTexture(GL_TEXTURE_2D, TextureLoader::getTextureId(material.specularMap));
+    glUniform1i(glGetUniformLocation(shaderProgram, "material.diffuse"), 0);
+    glUniform1i(glGetUniformLocation(shaderProgram, "material.specular"), 1);
+    glUniform1f(glGetUniformLocation(shaderProgram, "material.shininess"), material.shininess);
+    glUniformMatrix4fv(glGetUniformLocation(shaderProgram, "model"), 1, GL_FALSE, glm::value_ptr(model));
+    glUniformMatrix3fv(glGetUniformLocation(shaderProgram, "normal"), 1, GL_FALSE, glm::value_ptr(normal));
 }
 
-void setPyramidUniforms(GLuint shaderProgram, float x, float y){
+
+void setCubeUniforms(GLuint shaderProgram, float x, float y, const Material& material){
+    glm::mat4 cubeModel = glm::translate(glm::mat4(1.0f), {x, y, 0.0f});
+    glm::mat3 cubeNormal = glm::transpose(glm::inverse(glm::mat3(cubeModel)));
+    setModelUniforms(shaderProgram, cubeModel, cubeNormal, material);
+}
+
+void setPyramidUniforms(GLuint shaderProgram, float x, float y, const Material& material){
     glm::mat4 model = glm::translate(glm::mat4(1.0f), {x, y, -1.0f});
     model = glm::scale(model, 2.0f * glm::vec3(1.0f, 1.0f, 1.0f));
     glm::mat3 normal = glm::transpose(glm::inverse(glm::mat3(model)));
-    glUniformMatrix4fv(glGetUniformLocation(shaderProgram, "model"), 1, GL_FALSE, glm::value_ptr(model));
-    glUniformMatrix3fv(glGetUniformLocation(shaderProgram, "normal"), 1, GL_FALSE, glm::value_ptr(normal));
+    setModelUniforms(shaderProgram, model, normal, material);
+}
+
+void setFloorUniforms(GLuint shaderProgram, const Material& material){
+    glm::mat4 floorModel = glm::translate(glm::mat4(1.0f), {0.0f, 0.0f, -1.0f});
+    glm::mat3 floorNormal = glm::transpose(glm::inverse(glm::mat3(floorModel)));
+    setModelUniforms(shaderProgram, floorModel, floorNormal, material);
 }
 
 void setPointLightLampUniforms(GLuint shaderProgram, const PointLight& pl){
@@ -216,9 +230,50 @@ void setDirectionalLightLampUniforms(GLuint shaderProgram, const DirectionalLigh
     float angle = glm::acos(glm::dot(glm::normalize(dl.direction), {0.0f, 0.0f, -1.0f}));
     glm::vec3 rotateAxis = glm::normalize(glm::cross({0.0f, 0.0f, -1.0f}, dl.direction));
     model = glm::rotate(model, angle, rotateAxis);
-    model = glm::scale(model, 10.0f * glm::vec3(1.0f, 1.0f, 1.0f));
     glUniformMatrix4fv(glGetUniformLocation(shaderProgram, "model"), 1, GL_FALSE, glm::value_ptr(model));
     glUniform3fv(glGetUniformLocation(shaderProgram, "lightColor"), 1, glm::value_ptr(dl.diffuse));
+}
+
+std::vector<MeshData> loadModelData(std::filesystem::path modelPath){
+    Assimp::Importer importer;
+    const aiScene* scene = importer.ReadFile(modelPath.c_str(), aiProcess_JoinIdenticalVertices | aiProcess_Triangulate);
+    if (!scene){
+        return {};
+    }
+    std::vector<MeshData> meshes;
+    std::cout << "Found " << scene->mNumMeshes << " in scene" << std::endl;
+    for (int i = 0; i < scene->mNumMeshes; i++){\
+        MeshData newMeshData;
+        auto mesh = scene->mMeshes[i];
+        auto meshMaterial = scene->mMaterials[mesh->mMaterialIndex];
+        newMeshData.vertexData.reserve(8 * mesh->mNumVertices);
+        newMeshData.vertexIndices.reserve(3 * mesh->mNumFaces);
+        for (int j = 0; j < mesh->mNumVertices; j++){
+            newMeshData.vertexData.push_back(mesh->mVertices[j].x);
+            newMeshData.vertexData.push_back(mesh->mVertices[j].y);
+            newMeshData.vertexData.push_back(mesh->mVertices[j].z);
+            newMeshData.vertexData.push_back(mesh->mNormals[j].x);
+            newMeshData.vertexData.push_back(mesh->mNormals[j].y);
+            newMeshData.vertexData.push_back(mesh->mNormals[j].z);
+            newMeshData.vertexData.push_back(mesh->mTextureCoords[0][j].x);
+            newMeshData.vertexData.push_back(mesh->mTextureCoords[0][j].y);
+        }
+        for (int j = 0; j < mesh->mNumFaces; j++){
+            auto face = mesh->mFaces[j];
+            for (int k = 0; k < face.mNumIndices; k++){
+                newMeshData.vertexIndices.push_back(face.mIndices[k]);
+            }
+        }
+        aiString diffuseTexture;
+        aiString specularTexture;
+        meshMaterial->GetTexture(aiTextureType_DIFFUSE, 0, &diffuseTexture);
+        meshMaterial->GetTexture(aiTextureType_SPECULAR, 0, &specularTexture);
+        newMeshData.meshMaterial.diffuseMap = diffuseTexture.C_Str();
+        newMeshData.meshMaterial.specularMap = specularTexture.C_Str();
+        newMeshData.meshMaterial.shininess = 32.0f;
+        meshes.push_back(std::move(newMeshData));
+    }
+    return meshes;
 }
 
 int main(){
@@ -247,123 +302,37 @@ int main(){
     glm::vec3 cameraStartLookDirection = -cameraStartPos;
     auto camera = std::make_shared<Camera>(cameraStartPos, cameraStartLookDirection, glm::vec3(0.0f, 0.0f, 1.0f));
 
-    glm::vec3 floorScale = 25.0f * glm::vec3(1.0f, 1.0f, 1.0f);
-
-    glm::mat4 floorModel;
     glm::mat4 view;
     glm::mat4 projection;
-    glm::mat3 floorNormal;
-
-    std::filesystem::path cubeDiffuseMapPath = "assets/textures/container2.png";
-    std::filesystem::path cubeSpecularMapPath = "assets/textures/container2_specular.png";
-    GLfloat cubeShininess = 32.0f;
 
     GLuint cubeVertexShader, cubeFragmentShader;
     GLuint lampVertexShader, lampFragmentShader;
     GLuint cubeShaderProgram, lampShaderProgram;
-    GLuint cubeDiffuseMap, cubeSpecularMap;
 
-    std::vector<GLuint> vertexBuffers(3);
-    std::vector<GLuint> elementBuffers(3);
+    std::vector<GLuint> vertexBuffers(6);
+    std::vector<GLuint> elementBuffers(6);
     std::vector<GLuint> vertexArrays(6);
+
     GLuint& cubeVBO = vertexBuffers[0];
     GLuint& pyramidVBO = vertexBuffers[1];
-    GLuint& planeVBO = vertexBuffers[2];
+    GLuint& circlePlaneVBO = vertexBuffers[2];
+    GLuint& sphereVBO = vertexBuffers[3];
+    GLuint& coneVBO = vertexBuffers[4];
+    GLuint& squarePlaneVBO = vertexBuffers[5];
+
     GLuint& cubeEBO = elementBuffers[0];
     GLuint& pyramidEBO = elementBuffers[1];
     GLuint& planeEBO = elementBuffers[2];
+    GLuint& sphereEBO = elementBuffers[3];
+    GLuint& coneEBO = elementBuffers[4];
+    GLuint& squarePlaneEBO = elementBuffers[5];
+
     GLuint& cubeVAO = vertexArrays[0];
     GLuint& pyramidVAO = vertexArrays[1];
-    GLuint& planeVAO = vertexArrays[2];
+    GLuint& floorVAO = vertexArrays[2];
     GLuint& pointLightVAO = vertexArrays[3];
     GLuint& spotLightVAO = vertexArrays[4];
     GLuint& directionalLightVAO = vertexArrays[5];
-
-    std::vector<GLfloat> cubeVertexData =
-    {
-          1.0f,  1.0f,  1.0f,  1.0f,  0.0f,  0.0f, 1.0f, 1.0f,
-          1.0f, -1.0f,  1.0f,  1.0f,  0.0f,  0.0f, 1.0f, 0.0f,
-          1.0f, -1.0f, -1.0f,  1.0f,  0.0f,  0.0f, 0.0f, 0.0f,
-          1.0f,  1.0f, -1.0f,  1.0f,  0.0f,  0.0f, 0.0f, 1.0f,
-
-         -1.0f,  1.0f,  1.0f, -1.0f,  0.0f,  0.0f, 1.0f, 1.0f,
-         -1.0f, -1.0f,  1.0f, -1.0f,  0.0f,  0.0f, 1.0f, 0.0f,
-         -1.0f, -1.0f, -1.0f, -1.0f,  0.0f,  0.0f, 0.0f, 0.0f,
-         -1.0f,  1.0f, -1.0f, -1.0f,  0.0f,  0.0f, 0.0f, 1.0f,
-
-         -1.0f,  1.0f,  1.0f,  0.0f,  1.0f,  0.0f, 1.0f, 1.0f,
-          1.0f,  1.0f,  1.0f,  0.0f,  1.0f,  0.0f, 1.0f, 0.0f,
-          1.0f,  1.0f, -1.0f,  0.0f,  1.0f,  0.0f, 0.0f, 0.0f,
-         -1.0f,  1.0f, -1.0f,  0.0f,  1.0f,  0.0f, 0.0f, 1.0f,
-
-         -1.0f, -1.0f,  1.0f,  0.0f, -1.0f,  0.0f, 1.0f, 1.0f,
-          1.0f, -1.0f,  1.0f,  0.0f, -1.0f,  0.0f, 1.0f, 0.0f,
-          1.0f, -1.0f, -1.0f,  0.0f, -1.0f,  0.0f, 0.0f, 0.0f,
-         -1.0f, -1.0f, -1.0f,  0.0f, -1.0f,  0.0f, 0.0f, 1.0f,
-
-          1.0f,  1.0f,  1.0f,  0.0f,  0.0f,  1.0f, 1.0f, 1.0f,
-          1.0f, -1.0f,  1.0f,  0.0f,  0.0f,  1.0f, 1.0f, 0.0f,
-         -1.0f, -1.0f,  1.0f,  0.0f,  0.0f,  1.0f, 0.0f, 0.0f,
-         -1.0f,  1.0f,  1.0f,  0.0f,  0.0f,  1.0f, 0.0f, 1.0f,
-
-          1.0f,  1.0f, -1.0f,  0.0f,  0.0f, -1.0f, 1.0f, 1.0f,
-          1.0f, -1.0f, -1.0f,  0.0f,  0.0f, -1.0f, 1.0f, 0.0f,
-         -1.0f, -1.0f, -1.0f,  0.0f,  0.0f, -1.0f, 0.0f, 0.0f,
-         -1.0f,  1.0f, -1.0f,  0.0f,  0.0f, -1.0f, 0.0f, 1.0f,
-    };
-
-    std::vector<GLuint> cubeVertexIndices =
-    {
-         0,  1,  2,
-         2,  3,  0,
-         4,  5,  6,
-         6,  7,  4,
-         8,  9, 10,
-        10, 11,  8,
-        12, 13, 14,
-        14, 15, 12,
-        16, 17, 18,
-        18, 19, 16,
-        20, 21, 22,
-        22, 23, 20,
-    };
-
-    std::vector<GLfloat> pyramidVertexData = {
-                           0.0f,  1.0f, 0.0f, 0.0f, 0.0f, -1.0f,  std::sqrt(3.0f) * 0.25f, 0.75f,
-         std::sqrt(3.0f) * 0.5f, -0.5f, 0.0f, 0.0f, 0.0f, -1.0f,   std::sqrt(3.0f) * 0.5f,  0.0f,
-        -std::sqrt(3.0f) * 0.5f, -0.5f, 0.0f, 0.0f, 0.0f, -1.0f,                     0.0f,  0.0f,
-
-                           0.0f,  1.0f,            0.0f, 0.25f * std::sqrt(3.0f), 0.25f, 0.25f / std::sqrt(2.0f), 1.0f,                   0.0f,
-         std::sqrt(3.0f) * 0.5f, -0.5f,            0.0f, 0.25f * std::sqrt(3.0f), 0.25f, 0.25f / std::sqrt(2.0f), 0.0f,                   0.0f,
-                           0.0f,  0.0f, std::sqrt(2.0f), 0.25f * std::sqrt(3.0f), 0.25f, 0.25f / std::sqrt(2.0f), 0.5f, std::sqrt(2.0f / 3.0f),
-
-         std::sqrt(3.0f) * 0.5f, -0.5f,            0.0f, 0.0f, -0.5f, 0.25f / std::sqrt(2.0f), 1.0f,                   0.0f,
-        -std::sqrt(3.0f) * 0.5f, -0.5f,            0.0f, 0.0f, -0.5f, 0.25f / std::sqrt(2.0f), 0.0f,                   0.0f,
-                           0.0f,  0.0f, std::sqrt(2.0f), 0.0f, -0.5f, 0.25f / std::sqrt(2.0f), 0.5f, std::sqrt(2.0f / 3.0f),
-
-                           0.0f,  1.0f,            0.0f, -0.25f * std::sqrt(3.0f), 0.25f, 0.25f / std::sqrt(2.0f), 0.0f,                   0.0f,
-        -std::sqrt(3.0f) * 0.5f, -0.5f,            0.0f, -0.25f * std::sqrt(3.0f), 0.25f, 0.25f / std::sqrt(2.0f), 1.0f,                   0.0f,
-                           0.0f,  0.0f, std::sqrt(2.0f), -0.25f * std::sqrt(3.0f), 0.25f, 0.25f / std::sqrt(2.0f), 0.5f, std::sqrt(2.0f / 3.0f),
-    };
-
-    std::vector<GLuint> pyramidVertexIndices = {
-        0,  1,  2,
-        3,  4,  5,
-        6,  7,  8,
-        9, 10, 11,
-    };
-
-    std::vector<GLfloat> planeVertexData = {
-         1.0f,  1.0f, 0.0f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f,
-         1.0f, -1.0f, 0.0f, 0.0f, 0.0f, 1.0f, 1.0f, 0.0f,
-        -1.0f, -1.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f,
-        -1.0f,  1.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 1.0f,
-    };
-
-    std::vector<GLuint> planeVertexIndices = {
-        0, 1, 2,
-        2, 3, 0,
-    };
 
     auto cubeVertexShaderSource = loadShaderSource("assets/shaders/triangle.vert");
     auto cubeFragmentShaderSource = loadShaderSource("assets/shaders/triangle.frag");
@@ -413,30 +382,33 @@ int main(){
     glDeleteShader(lampVertexShader);
     glDeleteShader(lampFragmentShader);
 
+    auto [cubeVertexData, cubeVertexIndices, cubeMaterial] = loadModelData("assets/meshes/cube.obj")[0];
+    auto [pyramidVertexData, pyramidVertexIndices, pyramidMaterial] = loadModelData("assets/meshes/pyramid.obj")[0];
+    auto [circularPlaneVertexData, circularPlaneVertexIndices, circularPlaneMaterial] = loadModelData("assets/meshes/circularplane.obj")[0];
+    auto [coneVertexData, coneVertexIndices, coneMaterial] = loadModelData("assets/meshes/cone.obj")[0];
+    auto [sphereVertexData, sphereVertexIndices, sphereMaterial] = loadModelData("assets/meshes/sphere.obj")[0];
+    auto [squarePlaneVertexData, squarePlaneVertexIndices, squarePlaneMaterial] = loadModelData("assets/meshes/squareplane.obj")[0];
+
     // Setup data
 
     glGenBuffers(vertexBuffers.size(), vertexBuffers.data());
     glGenBuffers(elementBuffers.size(), elementBuffers.data());
     storeData(cubeVertexData, cubeVertexIndices, cubeVBO, cubeEBO);
     storeData(pyramidVertexData, pyramidVertexIndices, pyramidVBO, pyramidEBO);
-    storeData(planeVertexData, planeVertexIndices, planeVBO, planeEBO);
+    storeData(circularPlaneVertexData, circularPlaneVertexIndices, circlePlaneVBO, planeEBO);
+    storeData(sphereVertexData, sphereVertexIndices, sphereVBO, sphereEBO);
+    storeData(coneVertexData, coneVertexIndices, coneVBO, coneEBO);
+    storeData(squarePlaneVertexData, squarePlaneVertexIndices, squarePlaneVBO, squarePlaneEBO);
 
     // Setup VAOs
 
     glGenVertexArrays(vertexArrays.size(), vertexArrays.data());
     setupModel(cubeVAO, cubeVBO, cubeEBO);
     setupModel(pyramidVAO, pyramidVBO, pyramidEBO);
-    setupModel(planeVAO, planeVBO, planeEBO);
-    setupLamp(pointLightVAO, cubeVBO, cubeEBO);
-    setupLamp(spotLightVAO, pyramidVBO, pyramidEBO);
-    setupLamp(directionalLightVAO, planeVBO, planeEBO);
-
-    // Setup textures
-
-    glGenTextures(1, &cubeDiffuseMap);
-    glGenTextures(1, &cubeSpecularMap);
-    loadTextureData(cubeDiffuseMap, cubeDiffuseMapPath);
-    loadTextureData(cubeSpecularMap, cubeSpecularMapPath);
+    setupModel(floorVAO, circlePlaneVBO, planeEBO);
+    setupLamp(pointLightVAO, sphereVBO, sphereEBO);
+    setupLamp(spotLightVAO, coneVBO, coneEBO);
+    setupLamp(directionalLightVAO, squarePlaneVBO, squarePlaneEBO);
 
     float forwardAxisValue, rightAxisValue, upAxisValue;
 
@@ -505,7 +477,6 @@ int main(){
 
         view = CameraManager::getViewMatrix();
         projection = CameraManager::getProjectionMatrix();
-
         glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
@@ -518,18 +489,9 @@ int main(){
 
         glUniform3fv(glGetUniformLocation(cubeShaderProgram, "cameraPos"), 1, glm::value_ptr(camera->getCameraPos()));
 
-        glUniform1i(glGetUniformLocation(cubeShaderProgram, "material.diffuse"), 0);
-        glUniform1i(glGetUniformLocation(cubeShaderProgram, "material.specular"), 1);
-        glUniform1f(glGetUniformLocation(cubeShaderProgram, "material.shininess"), cubeShininess);
-
         setupPointLights(cubeShaderProgram, pointLights);
         setupSpotLights(cubeShaderProgram, spotLights, bFlashLight);
         setupDirectionalLights(cubeShaderProgram, directionalLights);
-
-        glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, cubeDiffuseMap);
-        glActiveTexture(GL_TEXTURE1);
-        glBindTexture(GL_TEXTURE_2D, cubeSpecularMap);
 
         // Draw cubes
 
@@ -537,28 +499,24 @@ int main(){
             for (int j = 0; j < numCubesY; j++){
                 bool bPyramid = (i + j) % 3 == 0;
                 float offsetX = i * cubeDistanceX - (numCubesX - 1) * cubeDistanceX / 2.0f;
-                float offsetY = j * cubeDistanceY - (numCubesY - 1)* cubeDistanceY / 2.0f;
+                float offsetY = j * cubeDistanceY - (numCubesY - 1) * cubeDistanceY / 2.0f;
                 if (bPyramid){
-                    setPyramidUniforms(cubeShaderProgram, offsetX, offsetY);
+                    setPyramidUniforms(cubeShaderProgram, offsetX, offsetY, pyramidMaterial);
                     glBindVertexArray(pyramidVAO);
-                    glDrawElements(GL_TRIANGLES, 12, GL_UNSIGNED_INT, nullptr);
+                    glDrawElements(GL_TRIANGLES, pyramidVertexIndices.size(), GL_UNSIGNED_INT, nullptr);
                 }
                 else {
-                    setCubeUniforms(cubeShaderProgram, offsetX, offsetY);
+                    setCubeUniforms(cubeShaderProgram, offsetX, offsetY, cubeMaterial);
                     glBindVertexArray(cubeVAO);
-                    glDrawElements(GL_TRIANGLES, 36, GL_UNSIGNED_INT, nullptr);
+                    glDrawElements(GL_TRIANGLES, cubeVertexIndices.size(), GL_UNSIGNED_INT, nullptr);
                 }
             }
         }
 
         // Draw floor
-
-        floorModel = glm::scale(glm::translate(glm::mat4(1.0f), {0.0f, 0.0f, -1.0f}), floorScale);
-        floorNormal = glm::transpose(glm::inverse(glm::mat3(floorModel)));
-        glUniformMatrix4fv(glGetUniformLocation(cubeShaderProgram, "model"), 1, GL_FALSE, glm::value_ptr(floorModel));
-        glUniformMatrix3fv(glGetUniformLocation(cubeShaderProgram, "normal"), 1, GL_FALSE, glm::value_ptr(floorNormal));
-        glBindVertexArray(planeVAO);
-        glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, nullptr);
+        setFloorUniforms(cubeShaderProgram, circularPlaneMaterial);
+        glBindVertexArray(floorVAO);
+        glDrawElements(GL_TRIANGLES, circularPlaneVertexIndices.size(), GL_UNSIGNED_INT, nullptr);
 
         // Draw lamps
 
@@ -570,19 +528,19 @@ int main(){
         for (int i = 0; i < numPointLights; i++){
             setPointLightLampUniforms(lampShaderProgram, pointLights[i]);
             glBindVertexArray(pointLightVAO);
-            glDrawElements(GL_TRIANGLES, 36, GL_UNSIGNED_INT, nullptr);
+            glDrawElements(GL_TRIANGLES, sphereVertexIndices.size(), GL_UNSIGNED_INT, nullptr);
         }
 
         for (int i = 0; i < numSpotLights - 1; i++){
             setSpotLightLampUniforms(lampShaderProgram, spotLights[i]);
             glBindVertexArray(spotLightVAO);
-            glDrawElements(GL_TRIANGLES, 12, GL_UNSIGNED_INT, nullptr);
+            glDrawElements(GL_TRIANGLES, coneVertexIndices.size(), GL_UNSIGNED_INT, nullptr);
         }
 
         for (int i = 0; i < numDirectionalLights; i++){
             setDirectionalLightLampUniforms(lampShaderProgram, directionalLights[i]);
             glBindVertexArray(directionalLightVAO);
-            glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, nullptr);
+            glDrawElements(GL_TRIANGLES, squarePlaneVertexIndices.size(), GL_UNSIGNED_INT, nullptr);
         }
 
         glfwSwapBuffers(window);
@@ -593,14 +551,6 @@ int main(){
 
     CameraManager::setActiveCamera(nullptr);
     CameraManager::setActiveWindow(nullptr);
-
-    glDeleteTextures(1, &cubeDiffuseMap);
-    glDeleteTextures(1, &cubeSpecularMap);
-    glDeleteVertexArrays(vertexArrays.size(), vertexArrays.data());
-    glDeleteBuffers(vertexBuffers.size(), vertexBuffers.data());
-    glDeleteBuffers(elementBuffers.size(), elementBuffers.data());
-    glDeleteProgram(cubeShaderProgram);
-    glDeleteProgram(lampShaderProgram);
 
     glfwDestroyWindow(window);
     glfwTerminate();

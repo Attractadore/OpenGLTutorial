@@ -6,6 +6,7 @@ find_package(DevIL REQUIRED)
 find_package(glm REQUIRED)
 find_package(fmt REQUIRED)
 find_package(assimp REQUIRED)
+find_package(pybind11 REQUIRED)
 add_executable("Tutorial" "main.cpp" "glad.c" "Camera.cpp" "CameraManager.cpp" "Lights.cpp" "RandomSampler.cpp" "TextureLoader.cpp")
 
 target_include_directories(${PROJECT_NAME} PRIVATE
@@ -15,11 +16,13 @@ target_include_directories(${PROJECT_NAME} PRIVATE
                      ${FMT_INCLUDE_DIRS}
                      ${IL_INCLUDE_DIRS}
                      ${GLM_INCLUDE_DIRS}
-                     ${ASSIMP_INCLUDE_DIRS})
+                     ${ASSIMP_INCLUDE_DIRS}
+                     ${pybind11_INCLUDE_DIRS})
 target_link_libraries(${PROJECT_NAME}
                       ${OPENGL_LIBRARIES}
                       ${IL_LIBRARIES}
                       assimp
                       glfw
                       dl
-                      fmt)
+                      fmt
+                      pybind11::embed)

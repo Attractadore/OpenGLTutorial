@@ -14,6 +14,7 @@
 #include <assimp/Importer.hpp>
 #include <assimp/scene.h>
 #include <assimp/postprocess.h>
+#include <pybind11/embed.h>
 
 #include <string>
 #include <vector>
@@ -26,6 +27,13 @@
 #include <iostream>
 
 #include <cmath>
+
+namespace py = pybind11;
+
+std::string loadShaderSource(std::filesystem::path filePath){
+    py::object load_shader_source = py::module::import("src.load_shader_source").attr("load_shader_source");
+    return load_shader_source(filePath.string()).cast<std::string>();
+}
 
 struct Material {
     std::string diffuseMap;
@@ -43,17 +51,6 @@ void debugFunction(GLenum source​, GLenum type​, GLuint id​, GLenum severi
     if (severity​ != GL_DEBUG_SEVERITY_NOTIFICATION){
         std::printf("%s\n", message​);
     }
-}
-
-std::string loadShaderSource(std::filesystem::path filePath){
-    std::fstream is(filePath);
-    if (!is){
-        return "";
-    }
-    auto fileSize = std::filesystem::file_size(filePath);
-    std::string fileContents(fileSize, ' ');
-    is.read(fileContents.data(), fileSize);
-    return fileContents;
 }
 
 void enableCameraLook(GLFWwindow* window){
@@ -241,7 +238,6 @@ std::vector<MeshData> loadModelData(std::filesystem::path modelPath){
         return {};
     }
     std::vector<MeshData> meshes;
-    std::cout << "Found " << scene->mNumMeshes << " in scene" << std::endl;
     for (int i = 0; i < scene->mNumMeshes; i++){\
         MeshData newMeshData;
         auto mesh = scene->mMeshes[i];
@@ -334,10 +330,14 @@ int main(){
     GLuint& spotLightVAO = vertexArrays[4];
     GLuint& directionalLightVAO = vertexArrays[5];
 
+    auto ts = std::chrono::steady_clock::now();
+    py::scoped_interpreter guard{};
     auto cubeVertexShaderSource = loadShaderSource("assets/shaders/triangle.vert");
     auto cubeFragmentShaderSource = loadShaderSource("assets/shaders/triangle.frag");
     auto lampVertexShaderSource = loadShaderSource("assets/shaders/lamp.vert");
     auto lampFragmentShaderSource = loadShaderSource("assets/shaders/lamp.frag");
+    auto te = std::chrono::steady_clock::now();
+    std::cout << "Load shaders in " << std::chrono::duration_cast<std::chrono::microseconds>(te-ts).count() << std::endl;
 
     glfwInit();
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);

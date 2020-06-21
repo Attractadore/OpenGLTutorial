@@ -5,7 +5,8 @@ find_package(glfw3 REQUIRED)
 find_package(DevIL REQUIRED)
 find_package(glm REQUIRED)
 find_package(fmt REQUIRED)
-add_executable("Tutorial" "main.cpp" "glad.c" "Camera.cpp" "CameraManager.cpp" "Lights.cpp" "RandomSampler.cpp")
+find_package(assimp REQUIRED)
+add_executable("Tutorial" "main.cpp" "glad.c" "Camera.cpp" "CameraManager.cpp" "Lights.cpp" "RandomSampler.cpp" "TextureLoader.cpp")
 
 target_include_directories(${PROJECT_NAME} PRIVATE
                     "${PROJECT_SOURCE_DIR}/../include/"
@@ -13,12 +14,12 @@ target_include_directories(${PROJECT_NAME} PRIVATE
                      ${GLFW3_INCLUDE_DIRS}
                      ${FMT_INCLUDE_DIRS}
                      ${IL_INCLUDE_DIRS}
-                     ${GLM_INCLUDE_DIRS})
+                     ${GLM_INCLUDE_DIRS}
+                     ${ASSIMP_INCLUDE_DIRS})
 target_link_libraries(${PROJECT_NAME}
                       ${OPENGL_LIBRARIES}
                       ${IL_LIBRARIES}
+                      assimp
                       glfw
                       dl
                       fmt)
-
-

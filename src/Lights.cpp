@@ -1,6 +1,7 @@
 #include "Lights.hpp"
-
 #include "RandomSampler.hpp"
+
+#include <glm/glm.hpp>
 
 #include <tuple>
 

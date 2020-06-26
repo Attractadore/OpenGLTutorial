@@ -5,7 +5,6 @@
 #include "Lights.hpp"
 #include "TextureLoader.hpp"
 
-#include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
 #include <GLFW/glfw3.h>
@@ -15,17 +14,8 @@
 #include <assimp/scene.h>
 #include <assimp/postprocess.h>
 
-#include <string>
-#include <vector>
-#include <filesystem>
-#include <fstream>
-#include <memory>
-#include <type_traits>
-#include <unordered_map>
-#include <iterator>
 #include <iostream>
-
-#include <cmath>
+#include <fstream>
 
 struct Material {
     std::string diffuseMap;
@@ -46,7 +36,7 @@ void debugFunction(GLenum source​, GLenum type​, GLuint id​, GLenum severi
 }
 
 std::string loadShaderSource(std::filesystem::path filePath){
-    std::fstream is(filePath);
+    std::ifstream is(filePath);
     if (!is){
         return "";
     }
@@ -147,12 +137,12 @@ void setupDirectionalLights(GLuint shaderProgram, const std::vector<DirectionalL
     }
 }
 
-template <typename T, typename V>
-void storeData(const std::vector<T>& vertexData, const std::vector<V>& vertexIndices, GLuint VBO, GLuint EBO) {
+template <typename S1, typename S2>
+void storeData(const S1& vertexData, const S2& vertexIndices, GLuint VBO, GLuint EBO) {
     glBindBuffer(GL_ARRAY_BUFFER, VBO);
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
-    glBufferData(GL_ARRAY_BUFFER, sizeof (T) * vertexData.size(), vertexData.data(), GL_STATIC_DRAW);
-    glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof (V) * vertexIndices.size(), vertexIndices.data(), GL_STATIC_DRAW);
+    glBufferData(GL_ARRAY_BUFFER, sizeof (typename S1::value_type) * vertexData.size(), vertexData.data(), GL_STATIC_DRAW);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof (typename S2::value_type) * vertexIndices.size(), vertexIndices.data(), GL_STATIC_DRAW);
 }
 
 void setupModel(GLuint VAO, GLuint VBO, GLuint EBO){
@@ -165,7 +155,6 @@ void setupModel(GLuint VAO, GLuint VBO, GLuint EBO){
     glEnableVertexAttribArray(0);
     glEnableVertexAttribArray(1);
     glEnableVertexAttribArray(2);
-
 }
 
 void setupLamp(GLuint VAO, GLuint VBO, GLuint EBO){
@@ -287,6 +276,7 @@ int main(){
     int numSpotLights = 5 + 1;
     int numDirectionalLights = 1;
     bool bFlashLight = false;
+    bool bGreyScale = false;
 
     int numCubesX = 10;
     int numCubesY = numCubesX;
@@ -304,13 +294,12 @@ int main(){
     glm::mat4 view;
     glm::mat4 projection;
 
-    GLuint cubeVertexShader, cubeFragmentShader;
-    GLuint lampVertexShader, lampFragmentShader;
-    GLuint cubeShaderProgram, lampShaderProgram;
+    GLuint cubeShaderProgram, lampShaderProgram, screenRectShaderProgram;
+    GLuint FBO, renderTexture, renderBuffer;
 
-    std::vector<GLuint> vertexBuffers(6);
-    std::vector<GLuint> elementBuffers(6);
-    std::vector<GLuint> vertexArrays(6);
+    std::vector<GLuint> vertexBuffers(7);
+    std::vector<GLuint> elementBuffers(7);
+    std::vector<GLuint> vertexArrays(7);
 
     GLuint& cubeVBO = vertexBuffers[0];
     GLuint& pyramidVBO = vertexBuffers[1];
@@ -318,6 +307,7 @@ int main(){
     GLuint& sphereVBO = vertexBuffers[3];
     GLuint& coneVBO = vertexBuffers[4];
     GLuint& squarePlaneVBO = vertexBuffers[5];
+    GLuint& screenRectVBO = vertexBuffers[6];
 
     GLuint& cubeEBO = elementBuffers[0];
     GLuint& pyramidEBO = elementBuffers[1];
@@ -325,6 +315,7 @@ int main(){
     GLuint& sphereEBO = elementBuffers[3];
     GLuint& coneEBO = elementBuffers[4];
     GLuint& squarePlaneEBO = elementBuffers[5];
+    GLuint& screenRectEBO = elementBuffers[6];
 
     GLuint& cubeVAO = vertexArrays[0];
     GLuint& pyramidVAO = vertexArrays[1];
@@ -332,17 +323,26 @@ int main(){
     GLuint& pointLightVAO = vertexArrays[3];
     GLuint& spotLightVAO = vertexArrays[4];
     GLuint& directionalLightVAO = vertexArrays[5];
+    GLuint& screenRectVAO = vertexArrays[6];
 
-    auto cubeVertexShaderSource = loadShaderSource("assets/shaders/triangle.vert");
-    auto cubeFragmentShaderSource = loadShaderSource("assets/shaders/triangle.frag");
-    auto lampVertexShaderSource = loadShaderSource("assets/shaders/lamp.vert");
-    auto lampFragmentShaderSource = loadShaderSource("assets/shaders/lamp.frag");
+    constexpr std::array<GLfloat, 16> screenRectVertexData = {
+        -1.0f, -1.0f, 0.0f, 0.0f,
+         1.0f, -1.0f, 1.0f, 0.0f,
+         1.0f,  1.0f, 1.0f, 1.0f,
+        -1.0f,  1.0f, 0.0f, 1.0f
+    };
+
+    constexpr std::array<GLuint, 6> screenRectVertexIndices = {
+        0, 1, 2,
+        2, 3, 0
+    };
 
     glfwInit();
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
     glfwWindowHint(GLFW_OPENGL_DEBUG_CONTEXT, GLFW_TRUE);
+    glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
     GLFWwindow* window = glfwCreateWindow(defaultWindowWidth, defaultWindowHeight, windowTitle.c_str(), nullptr, nullptr);
     glfwMakeContextCurrent(window);
     gladLoadGLLoader((GLADloadproc)glfwGetProcAddress);
@@ -365,21 +365,56 @@ int main(){
     }
     glEnable(GL_DEPTH_TEST);
 
-    // Create cube shader program
+    glGenTextures(1, &renderTexture);
+    glBindTexture(GL_TEXTURE_2D, renderTexture);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, defaultWindowWidth, defaultWindowHeight, 0, GL_RGB, GL_UNSIGNED_BYTE, nullptr);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 
-    cubeVertexShader = createShader(GL_VERTEX_SHADER, cubeVertexShaderSource);
-    cubeFragmentShader = createShader(GL_FRAGMENT_SHADER, cubeFragmentShaderSource);
-    cubeShaderProgram = createProgram({cubeVertexShader, cubeFragmentShader});
-    glDeleteShader(cubeVertexShader);
-    glDeleteShader(cubeFragmentShader);
+    glGenRenderbuffers(1, &renderBuffer);
+    glBindRenderbuffer(GL_RENDERBUFFER, renderBuffer);
+    glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, defaultWindowWidth, defaultWindowHeight);
 
-    // Create lamp shader program
+    glGenFramebuffers(1, &FBO);
+    glBindFramebuffer(GL_FRAMEBUFFER, FBO);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, renderTexture, 0);
+    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, renderBuffer);
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
-    lampVertexShader = createShader(GL_VERTEX_SHADER, lampVertexShaderSource);
-    lampFragmentShader = createShader(GL_FRAGMENT_SHADER, lampFragmentShaderSource);
-    lampShaderProgram = createProgram({lampVertexShader, lampFragmentShader});
-    glDeleteShader(lampVertexShader);
-    glDeleteShader(lampFragmentShader);
+    {
+      auto cubeVertexShaderSource = loadShaderSource("assets/shaders/triangle.vert");
+      auto cubeFragmentShaderSource = loadShaderSource("assets/shaders/triangle.frag");
+      auto lampVertexShaderSource = loadShaderSource("assets/shaders/lamp.vert");
+      auto lampFragmentShaderSource = loadShaderSource("assets/shaders/lamp.frag");
+      auto screenRectVertexShaderSource = loadShaderSource("assets/shaders/screenrect.vert");
+      auto screenRectFragmentShaderSource = loadShaderSource("assets/shaders/screenrect.frag");
+
+      // Create cube shader program
+
+      GLuint cubeVertexShader = createShader(GL_VERTEX_SHADER, cubeVertexShaderSource);
+      GLuint cubeFragmentShader = createShader(GL_FRAGMENT_SHADER, cubeFragmentShaderSource);
+      cubeShaderProgram = createProgram({cubeVertexShader, cubeFragmentShader});
+      glDeleteShader(cubeVertexShader);
+      glDeleteShader(cubeFragmentShader);
+
+      // Create lamp shader program
+
+      GLuint lampVertexShader = createShader(GL_VERTEX_SHADER, lampVertexShaderSource);
+      GLuint lampFragmentShader = createShader(GL_FRAGMENT_SHADER, lampFragmentShaderSource);
+      lampShaderProgram = createProgram({lampVertexShader, lampFragmentShader});
+      glDeleteShader(lampVertexShader);
+      glDeleteShader(lampFragmentShader);
+
+      // Create screen rect shader program
+
+      GLuint screenRectVertexShader = createShader(GL_VERTEX_SHADER, screenRectVertexShaderSource);
+      GLuint screenRectFragmentShader = createShader(GL_FRAGMENT_SHADER, screenRectFragmentShaderSource);
+      screenRectShaderProgram = createProgram({screenRectVertexShader, screenRectFragmentShader});
+      glDeleteShader(screenRectVertexShader);
+      glDeleteShader(screenRectFragmentShader);
+    }
 
     auto [cubeVertexData, cubeVertexIndices, cubeMaterial] = loadModelData("assets/meshes/cube.obj")[0];
     auto [pyramidVertexData, pyramidVertexIndices, pyramidMaterial] = loadModelData("assets/meshes/pyramid.obj")[0];
@@ -398,6 +433,7 @@ int main(){
     storeData(sphereVertexData, sphereVertexIndices, sphereVBO, sphereEBO);
     storeData(coneVertexData, coneVertexIndices, coneVBO, coneEBO);
     storeData(squarePlaneVertexData, squarePlaneVertexIndices, squarePlaneVBO, squarePlaneEBO);
+    storeData(screenRectVertexData, screenRectVertexIndices, screenRectVBO, screenRectEBO);
 
     // Setup VAOs
 
@@ -408,6 +444,14 @@ int main(){
     setupLamp(pointLightVAO, sphereVBO, sphereEBO);
     setupLamp(spotLightVAO, coneVBO, coneEBO);
     setupLamp(directionalLightVAO, squarePlaneVBO, squarePlaneEBO);
+    glBindVertexArray(screenRectVAO);
+    glBindBuffer(GL_ARRAY_BUFFER, screenRectVBO);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, screenRectEBO);
+    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(GLfloat), nullptr);
+    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(GLfloat), (void *) (2 * sizeof (GLfloat)));
+    glEnableVertexAttribArray(0);
+    glEnableVertexAttribArray(1);
+    glBindVertexArray(0);
 
     float forwardAxisValue, rightAxisValue, upAxisValue;
 
@@ -420,6 +464,8 @@ int main(){
         forwardAxisValue = 0.0f;
         rightAxisValue = 0.0f;
         upAxisValue = 0.0f;
+        bFlashLight = false;
+        bGreyScale = false;
 
         if (glfwGetKey(window, GLFW_KEY_2) == GLFW_PRESS){
             glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
@@ -451,11 +497,11 @@ int main(){
         if (glfwGetKey(window, GLFW_KEY_B) == GLFW_PRESS){
             upAxisValue += 1.0f;
         }
+        if (glfwGetKey(window, GLFW_KEY_TAB) == GLFW_PRESS){
+            bGreyScale = true;
+        }
         if (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_RIGHT) == GLFW_PRESS){
             bFlashLight = true;
-        }
-        if (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_RIGHT) == GLFW_RELEASE){
-            bFlashLight = false;
         }
 
         auto cameraForward = camera->getCameraForwardVector();
@@ -476,6 +522,7 @@ int main(){
 
         view = CameraManager::getViewMatrix();
         projection = CameraManager::getProjectionMatrix();
+        glBindFramebuffer(GL_FRAMEBUFFER, FBO);
         glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
@@ -541,6 +588,20 @@ int main(){
             glBindVertexArray(directionalLightVAO);
             glDrawElements(GL_TRIANGLES, squarePlaneVertexIndices.size(), GL_UNSIGNED_INT, nullptr);
         }
+
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        glDisable(GL_DEPTH_TEST);
+        glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
+        glClear(GL_COLOR_BUFFER_BIT);
+
+        glUseProgram(screenRectShaderProgram);
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, renderTexture);
+        glUniform1i(glGetUniformLocation(screenRectShaderProgram, "screenTexture"), 0);
+        glUniform1i(glGetUniformLocation(screenRectShaderProgram, "bGreyScale"), bGreyScale);
+        glBindVertexArray(screenRectVAO);
+        glDrawElements(GL_TRIANGLES, screenRectVertexIndices.size(), GL_UNSIGNED_INT, nullptr);
+        glEnable(GL_DEPTH_TEST);
 
         glfwSwapBuffers(window);
         glfwPollEvents();

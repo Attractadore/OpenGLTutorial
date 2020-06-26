@@ -21,7 +21,7 @@ float CameraManager::verticalFOV = CameraManager::horizontalFOV / aspectRatio;
 float CameraManager::nearPlane = 0.1f;
 float CameraManager::farPlane = 100.0f;
 
-void CameraManager::setActiveCamera(std::shared_ptr<Camera> newCamera){
+void CameraManager::setActiveCamera(const std::shared_ptr<Camera>& newCamera){
     CameraManager::currentCamera = newCamera;
 }
 

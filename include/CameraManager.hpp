@@ -1,5 +1,5 @@
 #pragma once
-#include <glm/glm.hpp>
+#include <glm/mat4x4.hpp>
 
 #include <memory>
 
@@ -17,7 +17,7 @@ public:
     static void activateViewportResizeCallback();
     static void removeViewportResizeCallback();
 
-    static void setActiveCamera(std::shared_ptr<Camera> newCamera);
+    static void setActiveCamera(const std::shared_ptr<Camera>& newCamera);
     static void setActiveWindow(GLFWwindow* window);
     static void setViewportSize(int width, int height);
     static void setHorizontalFOV(float horizontalFOV);

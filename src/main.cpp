@@ -165,6 +165,16 @@ void setupLamp(GLuint VAO, GLuint VBO, GLuint EBO){
     glEnableVertexAttribArray(0);
 }
 
+void setupRenderRect(GLuint VAO, GLuint VBO, GLuint EBO) {
+    glBindVertexArray(VAO);
+    glBindBuffer(GL_ARRAY_BUFFER, VBO);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
+    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(GLfloat), nullptr);
+    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(GLfloat), (void *) (2 * sizeof (GLfloat)));
+    glEnableVertexAttribArray(0);
+    glEnableVertexAttribArray(1);
+}
+
 void setModelUniforms(GLuint shaderProgram, const glm::mat4& model, const glm::mat3& normal, const Material& material){
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, TextureLoader::getTextureId(material.diffuseMap));
@@ -277,6 +287,8 @@ int main(){
     int numDirectionalLights = 1;
     bool bFlashLight = false;
     bool bGreyScale = false;
+    bool bTAA = true;
+    bool bShowMag = false;
 
     int numCubesX = 10;
     int numCubesY = numCubesX;
@@ -295,11 +307,13 @@ int main(){
     glm::mat4 projection;
 
     GLuint cubeShaderProgram, lampShaderProgram, screenRectShaderProgram;
-    GLuint FBO, renderTexture, renderBuffer;
+    GLuint FBO, renderBuffer;
+    std::vector<GLuint> renderTextures(2);
+    int renderIndex = 0;
 
-    std::vector<GLuint> vertexBuffers(7);
+    std::vector<GLuint> vertexBuffers(8);
     std::vector<GLuint> elementBuffers(7);
-    std::vector<GLuint> vertexArrays(7);
+    std::vector<GLuint> vertexArrays(8);
 
     GLuint& cubeVBO = vertexBuffers[0];
     GLuint& pyramidVBO = vertexBuffers[1];
@@ -308,6 +322,7 @@ int main(){
     GLuint& coneVBO = vertexBuffers[4];
     GLuint& squarePlaneVBO = vertexBuffers[5];
     GLuint& screenRectVBO = vertexBuffers[6];
+    GLuint& magRectVBO = vertexBuffers[7];
 
     GLuint& cubeEBO = elementBuffers[0];
     GLuint& pyramidEBO = elementBuffers[1];
@@ -324,12 +339,20 @@ int main(){
     GLuint& spotLightVAO = vertexArrays[4];
     GLuint& directionalLightVAO = vertexArrays[5];
     GLuint& screenRectVAO = vertexArrays[6];
+    GLuint& magRectVAO = vertexArrays[7];
 
     constexpr std::array<GLfloat, 16> screenRectVertexData = {
         -1.0f, -1.0f, 0.0f, 0.0f,
          1.0f, -1.0f, 1.0f, 0.0f,
          1.0f,  1.0f, 1.0f, 1.0f,
         -1.0f,  1.0f, 0.0f, 1.0f
+    };
+
+    constexpr std::array<GLfloat, 16> magRectVertexData = {
+        -1.0f,  0.0f,   0.0f,   0.0f,
+         0.0f,  0.0f, 0.125f,   0.0f,
+         0.0f,  1.0f, 0.125f, 0.125f,
+        -1.0f,  1.0f,   0.0f, 0.125f
     };
 
     constexpr std::array<GLuint, 6> screenRectVertexIndices = {
@@ -342,17 +365,15 @@ int main(){
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
     glfwWindowHint(GLFW_OPENGL_DEBUG_CONTEXT, GLFW_TRUE);
-    glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
     GLFWwindow* window = glfwCreateWindow(defaultWindowWidth, defaultWindowHeight, windowTitle.c_str(), nullptr, nullptr);
     glfwMakeContextCurrent(window);
     gladLoadGLLoader((GLADloadproc)glfwGetProcAddress);
     CameraManager::setActiveWindow(window);
     CameraManager::activateViewportResizeCallback();
-    glfwSetWindowSize(window, defaultWindowWidth, defaultWindowHeight);
-    enableCameraLook(window);
     CameraManager::setViewportSize(defaultWindowWidth, defaultWindowHeight);
     CameraManager::setHorizontalFOV(horizontalFOV);
     CameraManager::setActiveCamera(camera);
+    enableCameraLook(window);
 
     ilInit();
     ilEnable(IL_ORIGIN_SET);
@@ -365,13 +386,15 @@ int main(){
     }
     glEnable(GL_DEPTH_TEST);
 
-    glGenTextures(1, &renderTexture);
-    glBindTexture(GL_TEXTURE_2D, renderTexture);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, defaultWindowWidth, defaultWindowHeight, 0, GL_RGB, GL_UNSIGNED_BYTE, nullptr);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glGenTextures(2, renderTextures.data());
+    for (int i = 0; i < 2; i++){
+        glBindTexture(GL_TEXTURE_2D, renderTextures[i]);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, defaultWindowWidth, defaultWindowHeight, 0, GL_RGB, GL_UNSIGNED_BYTE, nullptr);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    }
 
     glGenRenderbuffers(1, &renderBuffer);
     glBindRenderbuffer(GL_RENDERBUFFER, renderBuffer);
@@ -379,9 +402,12 @@ int main(){
 
     glGenFramebuffers(1, &FBO);
     glBindFramebuffer(GL_FRAMEBUFFER, FBO);
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, renderTexture, 0);
     glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, renderBuffer);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, renderTextures[0], 0);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1, GL_TEXTURE_2D, renderTextures[1], 0);
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+    CameraManager::framebuffer = FBO;
 
     {
       auto cubeVertexShaderSource = loadShaderSource("assets/shaders/triangle.vert");
@@ -434,6 +460,7 @@ int main(){
     storeData(coneVertexData, coneVertexIndices, coneVBO, coneEBO);
     storeData(squarePlaneVertexData, squarePlaneVertexIndices, squarePlaneVBO, squarePlaneEBO);
     storeData(screenRectVertexData, screenRectVertexIndices, screenRectVBO, screenRectEBO);
+    storeData(magRectVertexData, screenRectVertexIndices, magRectVBO, 0);
 
     // Setup VAOs
 
@@ -444,14 +471,8 @@ int main(){
     setupLamp(pointLightVAO, sphereVBO, sphereEBO);
     setupLamp(spotLightVAO, coneVBO, coneEBO);
     setupLamp(directionalLightVAO, squarePlaneVBO, squarePlaneEBO);
-    glBindVertexArray(screenRectVAO);
-    glBindBuffer(GL_ARRAY_BUFFER, screenRectVBO);
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, screenRectEBO);
-    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(GLfloat), nullptr);
-    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(GLfloat), (void *) (2 * sizeof (GLfloat)));
-    glEnableVertexAttribArray(0);
-    glEnableVertexAttribArray(1);
-    glBindVertexArray(0);
+    setupRenderRect(screenRectVAO, screenRectVBO, screenRectEBO);
+    setupRenderRect(magRectVAO, magRectVBO, screenRectEBO);
 
     float forwardAxisValue, rightAxisValue, upAxisValue;
 
@@ -467,11 +488,17 @@ int main(){
         bFlashLight = false;
         bGreyScale = false;
 
+        if (glfwGetKey(window, GLFW_KEY_1) == GLFW_PRESS){
+            glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+        }
         if (glfwGetKey(window, GLFW_KEY_2) == GLFW_PRESS){
             glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
         }
-        if (glfwGetKey(window, GLFW_KEY_1) == GLFW_PRESS){
-            glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+        if (glfwGetKey(window, GLFW_KEY_3) == GLFW_PRESS){
+            bTAA = false;
+        }
+        if (glfwGetKey(window, GLFW_KEY_4) == GLFW_PRESS){
+            bTAA = true;
         }
         if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS){
             disableCameraLook(window);
@@ -500,6 +527,12 @@ int main(){
         if (glfwGetKey(window, GLFW_KEY_TAB) == GLFW_PRESS){
             bGreyScale = true;
         }
+        if (glfwGetKey(window, GLFW_KEY_M) == GLFW_PRESS){
+            bShowMag = true;
+        }
+        if (glfwGetKey(window, GLFW_KEY_N) == GLFW_PRESS){
+            bShowMag = false;
+        }
         if (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_RIGHT) == GLFW_PRESS){
             bFlashLight = true;
         }
@@ -522,7 +555,12 @@ int main(){
 
         view = CameraManager::getViewMatrix();
         projection = CameraManager::getProjectionMatrix();
+        if (bTAA and renderIndex){
+            glm::vec3 sampleTrans = {0.75f / defaultWindowWidth, 0.75f / defaultWindowHeight, 0.0f};
+            projection = glm::translate(glm::mat4(1.0f), sampleTrans) * projection;
+        }
         glBindFramebuffer(GL_FRAMEBUFFER, FBO);
+        glDrawBuffer(GL_COLOR_ATTACHMENT0 + renderIndex);
         glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
@@ -596,12 +634,26 @@ int main(){
 
         glUseProgram(screenRectShaderProgram);
         glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, renderTexture);
-        glUniform1i(glGetUniformLocation(screenRectShaderProgram, "screenTexture"), 0);
+        glBindTexture(GL_TEXTURE_2D, renderTextures[renderIndex]);
+        glUniform1i(glGetUniformLocation(screenRectShaderProgram, "currentTexture"), 0);
         glUniform1i(glGetUniformLocation(screenRectShaderProgram, "bGreyScale"), bGreyScale);
+        glUniform1i(glGetUniformLocation(screenRectShaderProgram, "bTAA"), bTAA);
+        if (bTAA){
+            glActiveTexture(GL_TEXTURE1);
+            glBindTexture(GL_TEXTURE_2D, renderTextures[!renderIndex]);
+            glUniform1i(glGetUniformLocation(screenRectShaderProgram, "previousTexture"), 1);
+            glUniform1f(glGetUniformLocation(screenRectShaderProgram, "cW"), 2.0f);
+            glUniform1f(glGetUniformLocation(screenRectShaderProgram, "pW"), 1.0f);
+        }
         glBindVertexArray(screenRectVAO);
         glDrawElements(GL_TRIANGLES, screenRectVertexIndices.size(), GL_UNSIGNED_INT, nullptr);
+        if (bShowMag){
+            glBindVertexArray(magRectVAO);
+            glDrawElements(GL_TRIANGLES, screenRectVertexIndices.size(), GL_UNSIGNED_INT, nullptr);
+        }
         glEnable(GL_DEPTH_TEST);
+
+        renderIndex = !renderIndex;
 
         glfwSwapBuffers(window);
         glfwPollEvents();

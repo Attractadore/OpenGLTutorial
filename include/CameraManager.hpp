@@ -1,4 +1,6 @@
 #pragma once
+#include "glad.h"
+
 #include <glm/mat4x4.hpp>
 
 #include <memory>
@@ -21,6 +23,7 @@ public:
     static void setActiveWindow(GLFWwindow* window);
     static void setViewportSize(int width, int height);
     static void setHorizontalFOV(float horizontalFOV);
+    static GLuint framebuffer;
     static void setVerticalFOV(float verticalFOV);
     static void setNearPlane(float nearPlane);
     static void setFarPlane(float farPlane);

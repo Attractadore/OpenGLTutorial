@@ -288,6 +288,8 @@ int main(){
     bool bFlashLight = false;
     bool bGreyScale = false;
     bool bTAA = true;
+    bool bMSAA = true;
+    int MSAASamples = 4;
     bool bShowMag = false;
 
     int numCubesX = 10;
@@ -310,6 +312,10 @@ int main(){
     GLuint FBO, renderBuffer;
     std::vector<GLuint> renderTextures(2);
     int renderIndex = 0;
+    GLuint MSFBO;
+    std::vector<GLuint> MSRenderBuffers(2);
+    GLuint& MSColorRenderBuffer = MSRenderBuffers[0];
+    GLuint& MSDepthStencilRenderBuffer = MSRenderBuffers[1];
 
     std::vector<GLuint> vertexBuffers(8);
     std::vector<GLuint> elementBuffers(7);
@@ -386,6 +392,8 @@ int main(){
     }
     glEnable(GL_DEPTH_TEST);
 
+    // Setup rendering framebuffer
+
     glGenTextures(2, renderTextures.data());
     for (int i = 0; i < 2; i++){
         glBindTexture(GL_TEXTURE_2D, renderTextures[i]);
@@ -407,7 +415,21 @@ int main(){
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1, GL_TEXTURE_2D, renderTextures[1], 0);
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
-    CameraManager::framebuffer = FBO;
+    // Setup multisampling framebuffer
+
+    glGenRenderbuffers(2, MSRenderBuffers.data());
+    glBindRenderbuffer(GL_RENDERBUFFER, MSColorRenderBuffer);
+    glRenderbufferStorageMultisample(GL_RENDERBUFFER, MSAASamples, GL_RGB, defaultWindowWidth, defaultWindowHeight);
+    glBindRenderbuffer(GL_RENDERBUFFER, MSDepthStencilRenderBuffer);
+    glRenderbufferStorageMultisample(GL_RENDERBUFFER, MSAASamples, GL_DEPTH24_STENCIL8, defaultWindowWidth, defaultWindowHeight);
+
+    glGenFramebuffers(1, &MSFBO);
+    glBindFramebuffer(GL_FRAMEBUFFER, MSFBO);
+    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_RENDERBUFFER, MSColorRenderBuffer);
+    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, MSDepthStencilRenderBuffer);
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+    CameraManager::framebuffers = {FBO, MSFBO};
 
     {
       auto cubeVertexShaderSource = loadShaderSource("assets/shaders/triangle.vert");
@@ -500,6 +522,12 @@ int main(){
         if (glfwGetKey(window, GLFW_KEY_4) == GLFW_PRESS){
             bTAA = true;
         }
+        if (glfwGetKey(window, GLFW_KEY_5) == GLFW_PRESS){
+            bMSAA = false;
+        }
+        if (glfwGetKey(window, GLFW_KEY_6) == GLFW_PRESS){
+            bMSAA = true;
+        }
         if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS){
             disableCameraLook(window);
         }
@@ -553,14 +581,20 @@ int main(){
             spotLights.back().position = camera->getCameraPos();
         }
 
+        auto [screenW, screenH] = CameraManager::getViewportSize();
+
         view = CameraManager::getViewMatrix();
         projection = CameraManager::getProjectionMatrix();
         if (bTAA and renderIndex){
-            glm::vec3 sampleTrans = {0.75f / defaultWindowWidth, 0.75f / defaultWindowHeight, 0.0f};
+            glm::vec3 sampleTrans = {0.5f / screenW, 0.5f / screenH, 0.0f};
             projection = glm::translate(glm::mat4(1.0f), sampleTrans) * projection;
         }
+
         glBindFramebuffer(GL_FRAMEBUFFER, FBO);
         glDrawBuffer(GL_COLOR_ATTACHMENT0 + renderIndex);
+        if (bMSAA){
+            glBindFramebuffer(GL_FRAMEBUFFER, MSFBO);
+        }
         glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
@@ -625,6 +659,12 @@ int main(){
             setDirectionalLightLampUniforms(lampShaderProgram, directionalLights[i]);
             glBindVertexArray(directionalLightVAO);
             glDrawElements(GL_TRIANGLES, squarePlaneVertexIndices.size(), GL_UNSIGNED_INT, nullptr);
+        }
+
+        if (bMSAA){
+            glBindFramebuffer(GL_READ_FRAMEBUFFER, MSFBO);
+            glBindFramebuffer(GL_DRAW_FRAMEBUFFER, FBO);
+            glBlitFramebuffer(0, 0, screenW, screenH, 0, 0, screenW, screenH, GL_COLOR_BUFFER_BIT, GL_LINEAR);
         }
 
         glBindFramebuffer(GL_FRAMEBUFFER, 0);

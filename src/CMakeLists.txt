@@ -4,7 +4,6 @@ find_package(OpenGL REQUIRED)
 find_package(glfw3 REQUIRED)
 find_package(DevIL REQUIRED)
 find_package(glm REQUIRED)
-find_package(fmt REQUIRED)
 find_package(assimp REQUIRED)
 add_executable("Tutorial" "main.cpp" "glad.c" "Camera.cpp" "CameraManager.cpp" "Lights.cpp" "RandomSampler.cpp" "TextureLoader.cpp")
 
@@ -21,5 +20,4 @@ target_link_libraries(${PROJECT_NAME}
                       ${IL_LIBRARIES}
                       assimp
                       glfw
-                      dl
-                      fmt)
+                      dl)

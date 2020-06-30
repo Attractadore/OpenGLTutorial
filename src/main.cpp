@@ -9,7 +9,6 @@
 #include <glm/gtc/type_ptr.hpp>
 #include <GLFW/glfw3.h>
 #include <IL/il.h>
-#include <fmt/format.h>
 #include <assimp/Importer.hpp>
 #include <assimp/scene.h>
 #include <assimp/postprocess.h>
@@ -74,67 +73,6 @@ GLuint createProgram(std::vector<GLuint> shaders){
         glDetachShader(program, shader);
     }
     return program;
-}
-
-template <class T>
-void setLightPosition(GLuint shaderProgram, std::string arrayName, const std::vector<T>& arrayData, int i){
-    glUniform3fv(glGetUniformLocation(shaderProgram, fmt::format("{}[{}].position", arrayName, i).c_str()), 1, glm::value_ptr(arrayData[i].position));
-}
-
-template <class T>
-void setLightDirection(GLuint shaderProgram, std::string arrayName, const std::vector<T>& arrayData, int i){
-    glUniform3fv(glGetUniformLocation(shaderProgram, fmt::format("{}[{}].direction", arrayName, i).c_str()), 1, glm::value_ptr(arrayData[i].direction));
-}
-
-template <class T>
-void setLightColor(GLuint shaderProgram, std::string arrayName, const std::vector<T>& arrayData, int i){
-    glUniform3fv(glGetUniformLocation(shaderProgram, fmt::format("{}[{}].color.ambient", arrayName, i).c_str()), 1, glm::value_ptr(arrayData[i].ambient));
-    glUniform3fv(glGetUniformLocation(shaderProgram, fmt::format("{}[{}].color.diffuse", arrayName, i).c_str()), 1, glm::value_ptr(arrayData[i].diffuse));
-    glUniform3fv(glGetUniformLocation(shaderProgram, fmt::format("{}[{}].color.specular", arrayName, i).c_str()), 1, glm::value_ptr(arrayData[i].specular));
-}
-
-template <class T>
-void setLightK(GLuint shaderProgram, std::string arrayName, const std::vector<T>& arrayData, int i){
-    glUniform1f(glGetUniformLocation(shaderProgram, fmt::format("{}[{}].k.c", arrayName, i).c_str()), arrayData[i].kc);
-    glUniform1f(glGetUniformLocation(shaderProgram, fmt::format("{}[{}].k.l", arrayName, i).c_str()), arrayData[i].kl);
-    glUniform1f(glGetUniformLocation(shaderProgram, fmt::format("{}[{}].k.q", arrayName, i).c_str()), arrayData[i].kq);
-}
-
-void setLightCone(GLuint shaderProgram, std::string arrayName, const std::vector<SpotLight>& arrayData, int i){
-    glUniform1f(glGetUniformLocation(shaderProgram, fmt::format("{}[{}].inner", arrayName, i).c_str()), arrayData[i].innerAngleCos);
-    glUniform1f(glGetUniformLocation(shaderProgram, fmt::format("{}[{}].outer", arrayName, i).c_str()), arrayData[i].outerAngleCos);
-}
-
-void setupPointLights(GLuint shaderProgram, const std::vector<PointLight>& pointLights){
-    glUniform1i(glGetUniformLocation(shaderProgram, "numPointLights"), pointLights.size());
-    std::string arrayName = "pointLights";
-    for (int i = 0; i < pointLights.size(); i++){
-        setLightPosition(shaderProgram, arrayName, pointLights, i);
-        setLightColor(shaderProgram, arrayName, pointLights, i);
-        setLightK(shaderProgram, arrayName, pointLights, i);
-    }
-}
-
-void setupSpotLights(GLuint shaderProgram, const std::vector<SpotLight>& spotLights, bool bFlashLight) {
-    int numSpotLights = std::max((int)(spotLights.size() - !bFlashLight), 0);
-    glUniform1i(glGetUniformLocation(shaderProgram, "numSpotLights"), numSpotLights);
-    std::string arrayName = "spotLights";
-    for (int i = 0; i < numSpotLights; i++){
-        setLightPosition(shaderProgram, arrayName, spotLights, i);
-        setLightDirection(shaderProgram, arrayName, spotLights, i);
-        setLightCone(shaderProgram, arrayName, spotLights, i);
-        setLightColor(shaderProgram, arrayName, spotLights, i);
-        setLightK(shaderProgram, arrayName, spotLights, i);
-    }
-}
-
-void setupDirectionalLights(GLuint shaderProgram, const std::vector<DirectionalLight>& directionalLights){
-    glUniform1i(glGetUniformLocation(shaderProgram, "numDirLights"), directionalLights.size());
-    std::string arrayName = "dirLights";
-    for (int i = 0; i < directionalLights.size(); i++){
-        setLightDirection(shaderProgram, arrayName, directionalLights, i);
-        setLightColor(shaderProgram, arrayName, directionalLights, i);
-    }
 }
 
 template <typename S1, typename S2>
@@ -274,6 +212,36 @@ std::vector<MeshData> loadModelData(std::filesystem::path modelPath){
     return meshes;
 }
 
+template <typename P>
+void copyLightColor(P dst, const LightCommon& light){
+    std::memcpy(dst + 00, glm::value_ptr(light.ambient), 12);
+    std::memcpy(dst + 16, glm::value_ptr(light.diffuse), 12);
+    std::memcpy(dst + 32, glm::value_ptr(light.specular), 12);
+}
+
+template <typename P>
+void copyLightAttenuation(P dst, const PointLight& light){
+    std::memcpy(dst + 0, &light.kc, 4);
+    std::memcpy(dst + 4, &light.kl, 4);
+    std::memcpy(dst + 8, &light.kq, 4);
+}
+
+template <typename P>
+void copyLightPosition(P dst, const PointLight& light){
+    std::memcpy(dst, glm::value_ptr(light.position), 12);
+}
+
+template <typename P>
+void copyLightDirection(P dst, const DirectionalLight& light){
+    std::memcpy(dst, glm::value_ptr(light.direction), 12);
+}
+
+template <typename P>
+void copyLightAngle(P dst, const SpotLight& light){
+    std::memcpy(dst + 0, &light.innerAngleCos, 4);
+    std::memcpy(dst + 4, &light.outerAngleCos, 4);
+}
+
 int main(){
     std::string windowTitle = "OpenGL Tutorial";
     float horizontalFOV = 90.0f;
@@ -282,9 +250,18 @@ int main(){
     int defaultWindowWidth = defaultWindowHeight * aspectRatio;
     float cameraSpeed = 5.0f;
 
+    constexpr int MAX_POINT_LIGHTS = 10;
+    constexpr int MAX_SPOT_LIGHTS = 10;
+    constexpr int MAX_DIRECTIONAL_LIGHTS = 10;
+
     int numPointLights = 5;
     int numSpotLights = 5 + 1;
     int numDirectionalLights = 1;
+
+    numPointLights = std::min(numPointLights, MAX_POINT_LIGHTS);
+    numSpotLights = std::min(numSpotLights, MAX_SPOT_LIGHTS);
+    numDirectionalLights = std::min(numDirectionalLights, MAX_DIRECTIONAL_LIGHTS);
+
     bool bFlashLight = false;
     bool bGreyScale = false;
     bool bTAA = true;
@@ -309,17 +286,10 @@ int main(){
     glm::mat4 projection;
 
     GLuint cubeShaderProgram, lampShaderProgram, screenRectShaderProgram;
-    GLuint FBO, renderBuffer;
-    std::vector<GLuint> renderTextures(2);
-    int renderIndex = 0;
-    GLuint MSFBO;
-    std::vector<GLuint> MSRenderBuffers(2);
-    GLuint& MSColorRenderBuffer = MSRenderBuffers[0];
-    GLuint& MSDepthStencilRenderBuffer = MSRenderBuffers[1];
+    std::vector<GLuint> colorTextures(2);
+    int colorIndex = 0;
 
     std::vector<GLuint> vertexBuffers(8);
-    std::vector<GLuint> elementBuffers(7);
-    std::vector<GLuint> vertexArrays(8);
 
     GLuint& cubeVBO = vertexBuffers[0];
     GLuint& pyramidVBO = vertexBuffers[1];
@@ -330,6 +300,8 @@ int main(){
     GLuint& screenRectVBO = vertexBuffers[6];
     GLuint& magRectVBO = vertexBuffers[7];
 
+    std::vector<GLuint> elementBuffers(7);
+
     GLuint& cubeEBO = elementBuffers[0];
     GLuint& pyramidEBO = elementBuffers[1];
     GLuint& planeEBO = elementBuffers[2];
@@ -337,6 +309,21 @@ int main(){
     GLuint& coneEBO = elementBuffers[4];
     GLuint& squarePlaneEBO = elementBuffers[5];
     GLuint& screenRectEBO = elementBuffers[6];
+
+    std::vector<GLuint> uniformBuffers(2);
+    GLuint& matrixUBO = uniformBuffers[0];
+    GLuint& lightUBO = uniformBuffers[1];
+
+    std::vector<GLuint> frameBuffers(2);
+    GLuint& FBO = frameBuffers[0];
+    GLuint& MSFBO = frameBuffers[1];
+
+    std::vector<GLuint> renderBuffers(3);
+    GLuint& depthStencilRenderBuffer = renderBuffers[0];
+    GLuint& MSColorRenderBuffer = renderBuffers[1];
+    GLuint& MSDepthStencilRenderBuffer = renderBuffers[2];
+
+    std::vector<GLuint> vertexArrays(8);
 
     GLuint& cubeVAO = vertexArrays[0];
     GLuint& pyramidVAO = vertexArrays[1];
@@ -392,11 +379,14 @@ int main(){
     }
     glEnable(GL_DEPTH_TEST);
 
+    glGenFramebuffers(frameBuffers.size(), frameBuffers.data());
+    glGenRenderbuffers(renderBuffers.size(), renderBuffers.data());
+
     // Setup rendering framebuffer
 
-    glGenTextures(2, renderTextures.data());
+    glGenTextures(colorTextures.size(), colorTextures.data());
     for (int i = 0; i < 2; i++){
-        glBindTexture(GL_TEXTURE_2D, renderTextures[i]);
+        glBindTexture(GL_TEXTURE_2D, colorTextures[i]);
         glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, defaultWindowWidth, defaultWindowHeight, 0, GL_RGB, GL_UNSIGNED_BYTE, nullptr);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
@@ -404,26 +394,22 @@ int main(){
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     }
 
-    glGenRenderbuffers(1, &renderBuffer);
-    glBindRenderbuffer(GL_RENDERBUFFER, renderBuffer);
+    glBindRenderbuffer(GL_RENDERBUFFER, depthStencilRenderBuffer);
     glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, defaultWindowWidth, defaultWindowHeight);
 
-    glGenFramebuffers(1, &FBO);
     glBindFramebuffer(GL_FRAMEBUFFER, FBO);
-    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, renderBuffer);
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, renderTextures[0], 0);
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1, GL_TEXTURE_2D, renderTextures[1], 0);
+    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, depthStencilRenderBuffer);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, colorTextures[0], 0);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1, GL_TEXTURE_2D, colorTextures[1], 0);
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
     // Setup multisampling framebuffer
 
-    glGenRenderbuffers(2, MSRenderBuffers.data());
     glBindRenderbuffer(GL_RENDERBUFFER, MSColorRenderBuffer);
     glRenderbufferStorageMultisample(GL_RENDERBUFFER, MSAASamples, GL_RGB, defaultWindowWidth, defaultWindowHeight);
     glBindRenderbuffer(GL_RENDERBUFFER, MSDepthStencilRenderBuffer);
     glRenderbufferStorageMultisample(GL_RENDERBUFFER, MSAASamples, GL_DEPTH24_STENCIL8, defaultWindowWidth, defaultWindowHeight);
 
-    glGenFramebuffers(1, &MSFBO);
     glBindFramebuffer(GL_FRAMEBUFFER, MSFBO);
     glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_RENDERBUFFER, MSColorRenderBuffer);
     glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, MSDepthStencilRenderBuffer);
@@ -495,6 +481,46 @@ int main(){
     setupLamp(directionalLightVAO, squarePlaneVBO, squarePlaneEBO);
     setupRenderRect(screenRectVAO, screenRectVBO, screenRectEBO);
     setupRenderRect(magRectVAO, magRectVBO, screenRectEBO);
+
+    glGenBuffers(uniformBuffers.size(), uniformBuffers.data());
+
+    glBindBuffer(GL_UNIFORM_BUFFER, matrixUBO);
+    glBufferData(GL_UNIFORM_BUFFER, 2 * sizeof (glm::mat4), nullptr, GL_DYNAMIC_DRAW);
+    glBindBufferBase(GL_UNIFORM_BUFFER, 0, matrixUBO);
+
+    glBindBuffer(GL_UNIFORM_BUFFER, lightUBO);
+    glBufferData(GL_UNIFORM_BUFFER, 2576, nullptr, GL_DYNAMIC_DRAW);
+    std::vector<std::byte> bufferData(2576);
+    auto bufferPointer = bufferData.data();
+    for (int i = 0; i < pointLights.size(); i++){
+        int offset = 80 * i;
+        const auto& light = pointLights[i];
+        copyLightColor(bufferPointer + offset, light);
+        copyLightAttenuation(bufferPointer + offset + 48, light);
+        copyLightPosition(bufferPointer + offset + 64, light);
+    }
+    for (int i = 0; i < spotLights.size(); i++){
+        int offset = 80 * MAX_POINT_LIGHTS + 112 * i;
+        const auto& light = spotLights[i];
+        copyLightColor(bufferPointer + offset, light);
+        copyLightAttenuation(bufferPointer + offset + 48, light);
+        copyLightPosition(bufferPointer + offset + 64, light);
+        copyLightDirection(bufferPointer + offset + 80, light);
+        copyLightAngle(bufferPointer + offset + 92, light);
+    }
+    for (int i = 0; i < directionalLights.size(); i++){
+        int offset = 80 * MAX_POINT_LIGHTS + 112 * MAX_SPOT_LIGHTS + 64 * i;
+        const auto& light = directionalLights[i];
+        copyLightColor(bufferPointer + offset, light);
+        copyLightDirection(bufferPointer + offset + 48, light);
+    }
+    {
+        int baseOffset = 80 * MAX_POINT_LIGHTS + 112 * MAX_SPOT_LIGHTS + 64 * MAX_DIRECTIONAL_LIGHTS;
+        std::memcpy(bufferPointer + baseOffset + 0, &numPointLights, 4);
+        std::memcpy(bufferPointer + baseOffset + 8, &numDirectionalLights, 4);
+    }
+    glBufferSubData(GL_UNIFORM_BUFFER, 0, 2576, bufferData.data());
+    glBindBufferBase(GL_UNIFORM_BUFFER, 1, lightUBO);
 
     float forwardAxisValue, rightAxisValue, upAxisValue;
 
@@ -576,40 +602,48 @@ int main(){
             camera->addLocationOffset(glm::normalize(inputVector) * deltaTime * cameraSpeed);
         }
 
+        glBindBuffer(GL_UNIFORM_BUFFER, lightUBO);
         if (bFlashLight and numSpotLights > 0){
             spotLights.back().direction = camera->getCameraForwardVector();
             spotLights.back().position = camera->getCameraPos();
+            int offset = 80 * MAX_POINT_LIGHTS + 112 * (spotLights.size() - 1);
+            glBufferSubData(GL_UNIFORM_BUFFER, offset + 64, 12, glm::value_ptr(spotLights.back().position));
+            glBufferSubData(GL_UNIFORM_BUFFER, offset + 80, 12, glm::value_ptr(spotLights.back().direction));
+        }
+        {
+            int numUsedSpotlights = std::max(numSpotLights - !bFlashLight, 0);
+            int offset = 80 * MAX_POINT_LIGHTS + 112 * MAX_SPOT_LIGHTS + 64 * MAX_DIRECTIONAL_LIGHTS + 4;
+            glBufferSubData(GL_UNIFORM_BUFFER, offset, 4, &numUsedSpotlights);
         }
 
         auto [screenW, screenH] = CameraManager::getViewportSize();
 
         view = CameraManager::getViewMatrix();
         projection = CameraManager::getProjectionMatrix();
-        if (bTAA and renderIndex){
+        if (bTAA and colorIndex){
             glm::vec3 sampleTrans = {0.5f / screenW, 0.5f / screenH, 0.0f};
             projection = glm::translate(glm::mat4(1.0f), sampleTrans) * projection;
         }
 
         glBindFramebuffer(GL_FRAMEBUFFER, FBO);
-        glDrawBuffer(GL_COLOR_ATTACHMENT0 + renderIndex);
+        glDrawBuffer(GL_COLOR_ATTACHMENT0 + colorIndex);
         if (bMSAA){
             glBindFramebuffer(GL_FRAMEBUFFER, MSFBO);
         }
         glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
+        glBindBuffer(GL_UNIFORM_BUFFER, matrixUBO);
+        glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(glm::mat4), glm::value_ptr(projection));
+        glBufferSubData(GL_UNIFORM_BUFFER, sizeof(glm::mat4), sizeof (glm::mat4), glm::value_ptr(view));
+
         // Setup model draw parameters
 
         glUseProgram(cubeShaderProgram);
-
-        glUniformMatrix4fv(glGetUniformLocation(cubeShaderProgram, "view"), 1, GL_FALSE, glm::value_ptr(view));
-        glUniformMatrix4fv(glGetUniformLocation(cubeShaderProgram, "projection"), 1, GL_FALSE, glm::value_ptr(projection));
+        glUniformBlockBinding(cubeShaderProgram, glGetUniformBlockIndex(cubeShaderProgram, "MatrixBlock"), 0);
+        glUniformBlockBinding(cubeShaderProgram, glGetUniformBlockIndex(cubeShaderProgram, "LightsBlock"), 1);
 
         glUniform3fv(glGetUniformLocation(cubeShaderProgram, "cameraPos"), 1, glm::value_ptr(camera->getCameraPos()));
-
-        setupPointLights(cubeShaderProgram, pointLights);
-        setupSpotLights(cubeShaderProgram, spotLights, bFlashLight);
-        setupDirectionalLights(cubeShaderProgram, directionalLights);
 
         // Draw cubes
 
@@ -640,8 +674,7 @@ int main(){
 
         glUseProgram(lampShaderProgram);
 
-        glUniformMatrix4fv(glGetUniformLocation(lampShaderProgram, "view"), 1, GL_FALSE, glm::value_ptr(view));
-        glUniformMatrix4fv(glGetUniformLocation(lampShaderProgram, "projection"), 1, GL_FALSE, glm::value_ptr(projection));
+        glUniformBlockBinding(lampShaderProgram, glGetUniformBlockIndex(lampShaderProgram, "MatrixBlock"), 0);
 
         for (int i = 0; i < numPointLights; i++){
             setPointLightLampUniforms(lampShaderProgram, pointLights[i]);
@@ -674,13 +707,13 @@ int main(){
 
         glUseProgram(screenRectShaderProgram);
         glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, renderTextures[renderIndex]);
+        glBindTexture(GL_TEXTURE_2D, colorTextures[colorIndex]);
         glUniform1i(glGetUniformLocation(screenRectShaderProgram, "currentTexture"), 0);
         glUniform1i(glGetUniformLocation(screenRectShaderProgram, "bGreyScale"), bGreyScale);
         glUniform1i(glGetUniformLocation(screenRectShaderProgram, "bTAA"), bTAA);
         if (bTAA){
             glActiveTexture(GL_TEXTURE1);
-            glBindTexture(GL_TEXTURE_2D, renderTextures[!renderIndex]);
+            glBindTexture(GL_TEXTURE_2D, colorTextures[!colorIndex]);
             glUniform1i(glGetUniformLocation(screenRectShaderProgram, "previousTexture"), 1);
             glUniform1f(glGetUniformLocation(screenRectShaderProgram, "cW"), 2.0f);
             glUniform1f(glGetUniformLocation(screenRectShaderProgram, "pW"), 1.0f);
@@ -693,7 +726,7 @@ int main(){
         }
         glEnable(GL_DEPTH_TEST);
 
-        renderIndex = !renderIndex;
+        colorIndex = !colorIndex;
 
         glfwSwapBuffers(window);
         glfwPollEvents();

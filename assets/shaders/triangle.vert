@@ -3,19 +3,24 @@ layout (location = 0) in vec3 vPos;
 layout (location = 1) in vec3 vNormal;
 layout (location = 2) in vec2 vTex;
 
-out vec3 fPos;
-out vec3 fNormal;
-out vec2 fTex;
+out VERT_OUT {
+    vec3 pos;
+    vec3 normal;
+    vec2 tex;
+} vOut;
+
+layout (std140) uniform MatrixBlock {
+    mat4 projection;
+    mat4 view;
+} matrices;
 
 uniform mat4 model;
-uniform mat4 view;
-uniform mat4 projection;
 uniform mat3 normal;
 
 void main()
 {
-    fPos = vec3(model * vec4(vPos, 1.0f));
-    fNormal = normal * vNormal;
-    fTex = vTex;
-    gl_Position = projection * view * model * vec4(vPos, 1.0f);
+    vOut.pos = vec3(model * vec4(vPos, 1.0f));
+    vOut.normal = normal * vNormal;
+    vOut.tex = vTex;
+    gl_Position = matrices.projection * matrices.view * model * vec4(vPos, 1.0f);
 }

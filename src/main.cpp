@@ -13,7 +13,6 @@
 #include <assimp/scene.h>
 #include <assimp/postprocess.h>
 
-#include <iostream>
 #include <fstream>
 
 struct Material {
@@ -63,7 +62,7 @@ GLuint createShader(GLenum shaderType, std::string shaderSource){
     return shader;
 }
 
-GLuint createProgram(std::vector<GLuint> shaders){
+GLuint createProgram(const std::vector<GLuint>& shaders){
     GLuint program = glCreateProgram();
     for (auto& shader : shaders){
         glAttachShader(program, shader);
@@ -113,62 +112,22 @@ void setupRenderRect(GLuint VAO, GLuint VBO, GLuint EBO) {
     glEnableVertexAttribArray(1);
 }
 
-void setModelUniforms(GLuint shaderProgram, const glm::mat4& model, const glm::mat3& normal, const Material& material){
+void setShaderMatrial(GLuint shaderProgram, const Material& material){
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, TextureLoader::getTextureId(material.diffuseMap));
     glActiveTexture(GL_TEXTURE1);
     glBindTexture(GL_TEXTURE_2D, TextureLoader::getTextureId(material.specularMap));
-    glUniform1i(glGetUniformLocation(shaderProgram, "material.diffuse"), 0);
-    glUniform1i(glGetUniformLocation(shaderProgram, "material.specular"), 1);
     glUniform1f(glGetUniformLocation(shaderProgram, "material.shininess"), material.shininess);
+}
+
+void setModelUniforms(GLuint shaderProgram, const glm::mat4& model, const glm::mat3& normal){
     glUniformMatrix4fv(glGetUniformLocation(shaderProgram, "model"), 1, GL_FALSE, glm::value_ptr(model));
     glUniformMatrix3fv(glGetUniformLocation(shaderProgram, "normal"), 1, GL_FALSE, glm::value_ptr(normal));
 }
 
-
-void setCubeUniforms(GLuint shaderProgram, float x, float y, const Material& material){
-    glm::mat4 cubeModel = glm::translate(glm::mat4(1.0f), {x, y, 0.0f});
-    glm::mat3 cubeNormal = glm::transpose(glm::inverse(glm::mat3(cubeModel)));
-    setModelUniforms(shaderProgram, cubeModel, cubeNormal, material);
-}
-
-void setPyramidUniforms(GLuint shaderProgram, float x, float y, const Material& material){
-    glm::mat4 model = glm::translate(glm::mat4(1.0f), {x, y, -1.0f});
-    model = glm::scale(model, 2.0f * glm::vec3(1.0f, 1.0f, 1.0f));
-    glm::mat3 normal = glm::transpose(glm::inverse(glm::mat3(model)));
-    setModelUniforms(shaderProgram, model, normal, material);
-}
-
-void setFloorUniforms(GLuint shaderProgram, const Material& material){
-    glm::mat4 floorModel = glm::translate(glm::mat4(1.0f), {0.0f, 0.0f, -1.0f});
-    glm::mat3 floorNormal = glm::transpose(glm::inverse(glm::mat3(floorModel)));
-    setModelUniforms(shaderProgram, floorModel, floorNormal, material);
-}
-
-void setPointLightLampUniforms(GLuint shaderProgram, const PointLight& pl){
-    glm::mat4 model = glm::translate(glm::mat4(1.0f), pl.position);
-    model = glm::scale(model, 0.2f * glm::vec3(1.0f, 1.0f, 1.0f));
+void setLampUniforms(GLuint shaderProgram, const glm::mat4& model, const glm::vec3& lightColor){
     glUniformMatrix4fv(glGetUniformLocation(shaderProgram, "model"), 1, GL_FALSE, glm::value_ptr(model));
-    glUniform3fv(glGetUniformLocation(shaderProgram, "lightColor"), 1, glm::value_ptr(pl.diffuse));
-}
-
-void setSpotLightLampUniforms(GLuint shaderProgram, const SpotLight& sl){
-    glm::mat4 model = glm::translate(glm::mat4(1.0f), sl.position);
-    float angle = glm::acos(glm::dot(glm::normalize(sl.direction), {0.0f, 0.0f, -1.0f}));
-    glm::vec3 rotateAxis = glm::normalize(glm::cross({0.0f, 0.0f, -1.0f}, sl.direction));
-    model = glm::rotate(model, angle, rotateAxis);
-    model = glm::scale(model, 0.4f * glm::vec3(1.0f, 1.0f, 1.0f));
-    glUniformMatrix4fv(glGetUniformLocation(shaderProgram, "model"), 1, GL_FALSE, glm::value_ptr(model));
-    glUniform3fv(glGetUniformLocation(shaderProgram, "lightColor"), 1, glm::value_ptr(sl.diffuse));
-}
-
-void setDirectionalLightLampUniforms(GLuint shaderProgram, const DirectionalLight& dl){
-    glm::mat4 model = glm::translate(glm::mat4(1.0f), {0.0f, 0.0f, 30.0f});
-    float angle = glm::acos(glm::dot(glm::normalize(dl.direction), {0.0f, 0.0f, -1.0f}));
-    glm::vec3 rotateAxis = glm::normalize(glm::cross({0.0f, 0.0f, -1.0f}, dl.direction));
-    model = glm::rotate(model, angle, rotateAxis);
-    glUniformMatrix4fv(glGetUniformLocation(shaderProgram, "model"), 1, GL_FALSE, glm::value_ptr(model));
-    glUniform3fv(glGetUniformLocation(shaderProgram, "lightColor"), 1, glm::value_ptr(dl.diffuse));
+    glUniform3fv(glGetUniformLocation(shaderProgram, "lightColor"), 1, glm::value_ptr(lightColor));
 }
 
 std::vector<MeshData> loadModelData(std::filesystem::path modelPath){
@@ -213,33 +172,98 @@ std::vector<MeshData> loadModelData(std::filesystem::path modelPath){
 }
 
 template <typename P>
-void copyLightColor(P dst, const LightCommon& light){
+void copyLightColor(P* dst, const LightCommon& light){
     std::memcpy(dst + 00, glm::value_ptr(light.ambient), 12);
     std::memcpy(dst + 16, glm::value_ptr(light.diffuse), 12);
     std::memcpy(dst + 32, glm::value_ptr(light.specular), 12);
 }
 
 template <typename P>
-void copyLightAttenuation(P dst, const PointLight& light){
+void copyLightAttenuation(P* dst, const PointLight& light){
     std::memcpy(dst + 0, &light.kc, 4);
     std::memcpy(dst + 4, &light.kl, 4);
     std::memcpy(dst + 8, &light.kq, 4);
 }
 
 template <typename P>
-void copyLightPosition(P dst, const PointLight& light){
+void copyLightPosition(P* dst, const PointLight& light){
     std::memcpy(dst, glm::value_ptr(light.position), 12);
 }
 
 template <typename P>
-void copyLightDirection(P dst, const DirectionalLight& light){
+void copyLightDirection(P* dst, const DirectionalLight& light){
     std::memcpy(dst, glm::value_ptr(light.direction), 12);
 }
 
 template <typename P>
-void copyLightAngle(P dst, const SpotLight& light){
+void copyLightAngle(P* dst, const SpotLight& light){
     std::memcpy(dst + 0, &light.innerAngleCos, 4);
     std::memcpy(dst + 4, &light.outerAngleCos, 4);
+}
+
+template <typename S>
+void calculatePyramidMatrices(int w, int h, float dX, float dY, S& matrices){
+    for (int i = 0; i < w; i++){
+        for (int j = 0; j < h; j++){
+            if ((i + j) % 3){
+                continue;
+            }
+            float x = i * dX - (w - 1) * dX / 2.0f;
+            float y = j * dY - (h - 1) * dY / 2.0f;
+            glm::mat4 model = glm::translate(glm::mat4(1.0f), {x, y, -1.0f});
+            model = glm::scale(model, 2.0f * glm::vec3(1.0f, 1.0f, 1.0f));
+            glm::mat3 normal(1.0f);
+            matrices.emplace_back(model, normal);
+        }
+    }
+}
+
+template <typename S>
+void calculateCubeMatrices(int w, int h, float dX, float dY, S& matrices){
+    for (int i = 0; i < w; i++){
+        for (int j = 0; j < h; j++){
+            if (!((i + j) % 3)){
+                continue;
+            }
+            float x = i * dX - (w - 1) * dX / 2.0f;
+            float y = j * dY - (h - 1) * dY / 2.0f;
+            glm::mat4 model = glm::translate(glm::mat4(1.0f), {x, y, 0.0f});
+            glm::mat3 normal(1.0f);
+            matrices.emplace_back(model, normal);
+        }
+    }
+}
+
+template <typename S1, typename S2>
+void calculatePointLightMatrices(const S1& lights, S2& matrices){
+    for (const auto& light : lights){
+        glm::mat4 model = glm::translate(glm::mat4(1.0f), light.position);
+        model = glm::scale(model, 0.2f * glm::vec3(1.0f, 1.0f, 1.0f));
+        matrices.push_back(model);
+    }
+}
+
+template <typename S1, typename S2>
+void calculateSpotLightMatrices(const S1& lights, S2& matrices){
+    for (const auto& light : lights){
+        glm::mat4 model = glm::translate(glm::mat4(1.0f), light.position);
+        float angle = glm::acos(glm::dot(glm::normalize(light.direction), {0.0f, 0.0f, -1.0f}));
+        glm::vec3 rotateAxis = glm::normalize(glm::cross({0.0f, 0.0f, -1.0f}, light.direction));
+        model = glm::rotate(model, angle, rotateAxis);
+        model = glm::scale(model, 0.4f * glm::vec3(1.0f, 1.0f, 1.0f));
+        matrices.push_back(model);
+    }
+}
+
+template <typename S1, typename S2>
+void calculateDirectionalLightMatrices(const S1& lights, S2& matrices){
+    for (const auto& light : lights){
+        glm::mat4 model = glm::translate(glm::mat4(1.0f), {0.0f, 0.0f, 30.0f});
+        float angle = glm::acos(glm::dot(glm::normalize(light.direction), {0.0f, 0.0f, -1.0f}));
+        glm::vec3 rotateAxis = glm::normalize(glm::cross({0.0f, 0.0f, -1.0f}, light.direction));
+        model = glm::rotate(model, angle, rotateAxis);
+        matrices.push_back(model);
+    }
 }
 
 int main(){
@@ -262,6 +286,10 @@ int main(){
     numSpotLights = std::min(numSpotLights, MAX_SPOT_LIGHTS);
     numDirectionalLights = std::min(numDirectionalLights, MAX_DIRECTIONAL_LIGHTS);
 
+    std::vector<PointLight> pointLights(numPointLights);
+    std::vector<SpotLight> spotLights(numSpotLights);
+    std::vector<DirectionalLight> directionalLights(numDirectionalLights);
+
     bool bFlashLight = false;
     bool bGreyScale = false;
     bool bTAA = true;
@@ -274,9 +302,20 @@ int main(){
     float cubeDistanceX = 4.0f;
     float cubeDistanceY = cubeDistanceX;
 
-    std::vector<PointLight> pointLights(numPointLights);
-    std::vector<SpotLight> spotLights(numSpotLights);
-    std::vector<DirectionalLight> directionalLights(numDirectionalLights);
+    std::vector<std::pair<glm::mat4, glm::mat3>> pyramidMatrices;
+    std::vector<std::pair<glm::mat4, glm::mat3>> cubeMatrices;
+    std::vector<glm::mat4> pointLightMatrices;
+    std::vector<glm::mat4> spotLightMatrices;
+    std::vector<glm::mat4> directionalLightMatrices;
+
+    glm::mat4 floorModel = glm::translate(glm::mat4(1.0f), {0.0f, 0.0f, -1.0f});
+    glm::mat3 floorNormal(1.0f);
+
+    calculatePyramidMatrices(numCubesX, numCubesY, cubeDistanceX, cubeDistanceY, pyramidMatrices);
+    calculateCubeMatrices(numCubesX, numCubesY, cubeDistanceX, cubeDistanceY, cubeMatrices);
+    calculatePointLightMatrices(pointLights, pointLightMatrices);
+    calculateSpotLightMatrices(spotLights, spotLightMatrices);
+    calculateDirectionalLightMatrices(directionalLights, directionalLightMatrices);
 
     glm::vec3 cameraStartPos = {5.0f, 5.0f, 3.0f};
     glm::vec3 cameraStartLookDirection = -cameraStartPos;
@@ -520,7 +559,23 @@ int main(){
         std::memcpy(bufferPointer + baseOffset + 8, &numDirectionalLights, 4);
     }
     glBufferSubData(GL_UNIFORM_BUFFER, 0, 2576, bufferData.data());
+    bufferData.clear();
     glBindBufferBase(GL_UNIFORM_BUFFER, 1, lightUBO);
+
+    glUseProgram(cubeShaderProgram);
+    glUniformBlockBinding(cubeShaderProgram, glGetUniformBlockIndex(cubeShaderProgram, "MatrixBlock"), 0);
+    glUniformBlockBinding(cubeShaderProgram, glGetUniformBlockIndex(cubeShaderProgram, "LightsBlock"), 1);
+    glUniform1i(glGetUniformLocation(cubeShaderProgram, "material.diffuse"), 0);
+    glUniform1i(glGetUniformLocation(cubeShaderProgram, "material.specular"), 1);
+
+    glUseProgram(lampShaderProgram);
+    glUniformBlockBinding(lampShaderProgram, glGetUniformBlockIndex(lampShaderProgram, "MatrixBlock"), 0);
+
+    glUseProgram(screenRectShaderProgram);
+    glUniform1f(glGetUniformLocation(screenRectShaderProgram, "cW"), 2.0f);
+    glUniform1f(glGetUniformLocation(screenRectShaderProgram, "pW"), 1.0f);
+    glUniform1i(glGetUniformLocation(screenRectShaderProgram, "currentTexture"), 0);
+    glUniform1i(glGetUniformLocation(screenRectShaderProgram, "previousTexture"), 1);
 
     float forwardAxisValue, rightAxisValue, upAxisValue;
 
@@ -535,6 +590,8 @@ int main(){
         upAxisValue = 0.0f;
         bFlashLight = false;
         bGreyScale = false;
+
+        // Input
 
         if (glfwGetKey(window, GLFW_KEY_1) == GLFW_PRESS){
             glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
@@ -640,33 +697,34 @@ int main(){
         // Setup model draw parameters
 
         glUseProgram(cubeShaderProgram);
-        glUniformBlockBinding(cubeShaderProgram, glGetUniformBlockIndex(cubeShaderProgram, "MatrixBlock"), 0);
-        glUniformBlockBinding(cubeShaderProgram, glGetUniformBlockIndex(cubeShaderProgram, "LightsBlock"), 1);
 
         glUniform3fv(glGetUniformLocation(cubeShaderProgram, "cameraPos"), 1, glm::value_ptr(camera->getCameraPos()));
 
         // Draw cubes
 
-        for (int i = 0; i < numCubesX; i++){
-            for (int j = 0; j < numCubesY; j++){
-                bool bPyramid = (i + j) % 3 == 0;
-                float offsetX = i * cubeDistanceX - (numCubesX - 1) * cubeDistanceX / 2.0f;
-                float offsetY = j * cubeDistanceY - (numCubesY - 1) * cubeDistanceY / 2.0f;
-                if (bPyramid){
-                    setPyramidUniforms(cubeShaderProgram, offsetX, offsetY, pyramidMaterial);
-                    glBindVertexArray(pyramidVAO);
-                    glDrawElements(GL_TRIANGLES, pyramidVertexIndices.size(), GL_UNSIGNED_INT, nullptr);
-                }
-                else {
-                    setCubeUniforms(cubeShaderProgram, offsetX, offsetY, cubeMaterial);
-                    glBindVertexArray(cubeVAO);
-                    glDrawElements(GL_TRIANGLES, cubeVertexIndices.size(), GL_UNSIGNED_INT, nullptr);
-                }
-            }
+        setShaderMatrial(cubeShaderProgram, cubeMaterial);
+
+        for (const auto& [m, n] : cubeMatrices){
+            setModelUniforms(cubeShaderProgram, m, n);
+            glBindVertexArray(cubeVAO);
+            glDrawElements(GL_TRIANGLES, cubeVertexIndices.size(), GL_UNSIGNED_INT, nullptr);
+        }
+
+        // Draw pyramids
+
+        setShaderMatrial(cubeShaderProgram, pyramidMaterial);
+
+        for (const auto& [m, n] : pyramidMatrices){
+            setModelUniforms(cubeShaderProgram, m, n);
+            glBindVertexArray(pyramidVAO);
+            glDrawElements(GL_TRIANGLES, pyramidVertexIndices.size(), GL_UNSIGNED_INT, nullptr);
         }
 
         // Draw floor
-        setFloorUniforms(cubeShaderProgram, circularPlaneMaterial);
+
+        setShaderMatrial(cubeShaderProgram, circularPlaneMaterial);
+
+        setModelUniforms(cubeShaderProgram, floorModel, floorNormal);
         glBindVertexArray(floorVAO);
         glDrawElements(GL_TRIANGLES, circularPlaneVertexIndices.size(), GL_UNSIGNED_INT, nullptr);
 
@@ -674,22 +732,20 @@ int main(){
 
         glUseProgram(lampShaderProgram);
 
-        glUniformBlockBinding(lampShaderProgram, glGetUniformBlockIndex(lampShaderProgram, "MatrixBlock"), 0);
-
         for (int i = 0; i < numPointLights; i++){
-            setPointLightLampUniforms(lampShaderProgram, pointLights[i]);
+            setLampUniforms(lampShaderProgram, pointLightMatrices[i], pointLights[i].diffuse);
             glBindVertexArray(pointLightVAO);
             glDrawElements(GL_TRIANGLES, sphereVertexIndices.size(), GL_UNSIGNED_INT, nullptr);
         }
 
         for (int i = 0; i < numSpotLights - 1; i++){
-            setSpotLightLampUniforms(lampShaderProgram, spotLights[i]);
+            setLampUniforms(lampShaderProgram, spotLightMatrices[i], spotLights[i].diffuse);
             glBindVertexArray(spotLightVAO);
             glDrawElements(GL_TRIANGLES, coneVertexIndices.size(), GL_UNSIGNED_INT, nullptr);
         }
 
         for (int i = 0; i < numDirectionalLights; i++){
-            setDirectionalLightLampUniforms(lampShaderProgram, directionalLights[i]);
+            setLampUniforms(lampShaderProgram, directionalLightMatrices[i], directionalLights[i].diffuse);
             glBindVertexArray(directionalLightVAO);
             glDrawElements(GL_TRIANGLES, squarePlaneVertexIndices.size(), GL_UNSIGNED_INT, nullptr);
         }
@@ -708,15 +764,11 @@ int main(){
         glUseProgram(screenRectShaderProgram);
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, colorTextures[colorIndex]);
-        glUniform1i(glGetUniformLocation(screenRectShaderProgram, "currentTexture"), 0);
         glUniform1i(glGetUniformLocation(screenRectShaderProgram, "bGreyScale"), bGreyScale);
         glUniform1i(glGetUniformLocation(screenRectShaderProgram, "bTAA"), bTAA);
         if (bTAA){
             glActiveTexture(GL_TEXTURE1);
             glBindTexture(GL_TEXTURE_2D, colorTextures[!colorIndex]);
-            glUniform1i(glGetUniformLocation(screenRectShaderProgram, "previousTexture"), 1);
-            glUniform1f(glGetUniformLocation(screenRectShaderProgram, "cW"), 2.0f);
-            glUniform1f(glGetUniformLocation(screenRectShaderProgram, "pW"), 1.0f);
         }
         glBindVertexArray(screenRectVAO);
         glDrawElements(GL_TRIANGLES, screenRectVertexIndices.size(), GL_UNSIGNED_INT, nullptr);

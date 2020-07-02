@@ -292,7 +292,7 @@ int main(){
 
     bool bFlashLight = false;
     bool bGreyScale = false;
-    bool bTAA = true;
+    bool bTAA = false;
     int TAASamples = 4;
     std::vector<glm::vec3> TAASamplesPositions = {
         {-0.25f, -0.25f, 0.0f},
@@ -728,6 +728,8 @@ int main(){
 
         // Setup model draw parameters
 
+        glEnable(GL_CULL_FACE);
+
         glUseProgram(cubeShaderProgram);
 
         glUniform3fv(glGetUniformLocation(cubeShaderProgram, "cameraPos"), 1, glm::value_ptr(camera->getCameraPos()));
@@ -754,11 +756,15 @@ int main(){
 
         // Draw floor
 
+        glDisable(GL_CULL_FACE);
+
         setShaderMatrial(cubeShaderProgram, circularPlaneMaterial);
 
         setModelUniforms(cubeShaderProgram, floorModel, floorNormal);
         glBindVertexArray(floorVAO);
         glDrawElements(GL_TRIANGLES, circularPlaneVertexIndices.size(), GL_UNSIGNED_INT, nullptr);
+
+        glEnable(GL_CULL_FACE);
 
         // Draw lamps
 
@@ -775,6 +781,8 @@ int main(){
             glBindVertexArray(spotLightVAO);
             glDrawElements(GL_TRIANGLES, coneVertexIndices.size(), GL_UNSIGNED_INT, nullptr);
         }
+
+        glDisable(GL_CULL_FACE);
 
         for (int i = 0; i < numDirectionalLights; i++){
             setLampUniforms(lampShaderProgram, directionalLightMatrices[i], directionalLights[i].diffuse);

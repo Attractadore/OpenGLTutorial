@@ -293,6 +293,13 @@ int main(){
     bool bFlashLight = false;
     bool bGreyScale = false;
     bool bTAA = true;
+    int TAASamples = 4;
+    std::vector<glm::vec3> TAASamplesPositions = {
+        {-0.25f, -0.25f, 0.0f},
+        { 0.25f, -0.25f, 0.0f},
+        { 0.25f,  0.25f, 0.0f},
+        {-0.25f,  0.25f, 0.0f},
+    };
     bool bMSAA = true;
     int MSAASamples = 4;
     bool bShowMag = false;
@@ -324,8 +331,9 @@ int main(){
     glm::mat4 view;
     glm::mat4 projection;
 
-    GLuint cubeShaderProgram, lampShaderProgram, screenRectShaderProgram;
-    std::vector<GLuint> colorTextures(2);
+    GLuint cubeShaderProgram, lampShaderProgram, TAAShaderProgram, postprocessShaderProgram;
+    GLuint frameTextureArray;
+    GLuint combinedFrameTexture;
     int colorIndex = 0;
 
     std::vector<GLuint> vertexBuffers(8);
@@ -353,14 +361,15 @@ int main(){
     GLuint& matrixUBO = uniformBuffers[0];
     GLuint& lightUBO = uniformBuffers[1];
 
-    std::vector<GLuint> frameBuffers(2);
-    GLuint& FBO = frameBuffers[0];
+    std::vector<GLuint> frameBuffers(3);
+    GLuint& TAAFBO = frameBuffers[0];
     GLuint& MSFBO = frameBuffers[1];
+    GLuint& blitFBO = frameBuffers[2];
 
     std::vector<GLuint> renderBuffers(3);
-    GLuint& depthStencilRenderBuffer = renderBuffers[0];
-    GLuint& MSColorRenderBuffer = renderBuffers[1];
-    GLuint& MSDepthStencilRenderBuffer = renderBuffers[2];
+    GLuint& MSColorRenderBuffer = renderBuffers[0];
+    GLuint& MSDepthStencilRenderBuffer = renderBuffers[1];
+    GLuint& blitDepthStencilRenderBuffer = renderBuffers[2];
 
     std::vector<GLuint> vertexArrays(8);
 
@@ -421,40 +430,54 @@ int main(){
     glGenFramebuffers(frameBuffers.size(), frameBuffers.data());
     glGenRenderbuffers(renderBuffers.size(), renderBuffers.data());
 
-    // Setup rendering framebuffer
+    // Setup rendering textures
 
-    glGenTextures(colorTextures.size(), colorTextures.data());
-    for (int i = 0; i < 2; i++){
-        glBindTexture(GL_TEXTURE_2D, colorTextures[i]);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, defaultWindowWidth, defaultWindowHeight, 0, GL_RGB, GL_UNSIGNED_BYTE, nullptr);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-    }
+    glGenTextures(1, &combinedFrameTexture);
+    glBindTexture(GL_TEXTURE_2D, combinedFrameTexture);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, defaultWindowWidth, defaultWindowHeight, 0, GL_RGB, GL_UNSIGNED_BYTE, nullptr);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 
-    glBindRenderbuffer(GL_RENDERBUFFER, depthStencilRenderBuffer);
-    glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, defaultWindowWidth, defaultWindowHeight);
+    glGenTextures(1, &frameTextureArray);
+    glBindTexture(GL_TEXTURE_2D_ARRAY, frameTextureArray);
+    glTexImage3D(GL_TEXTURE_2D_ARRAY, 0, GL_RGB, defaultWindowWidth, defaultWindowHeight, TAASamples, 0, GL_RGB, GL_UNSIGNED_BYTE, nullptr);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAX_LEVEL, 0);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 
-    glBindFramebuffer(GL_FRAMEBUFFER, FBO);
-    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, depthStencilRenderBuffer);
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, colorTextures[0], 0);
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1, GL_TEXTURE_2D, colorTextures[1], 0);
-    glBindFramebuffer(GL_FRAMEBUFFER, 0);
-
-    // Setup multisampling framebuffer
+    // Setup renderbuffers
 
     glBindRenderbuffer(GL_RENDERBUFFER, MSColorRenderBuffer);
     glRenderbufferStorageMultisample(GL_RENDERBUFFER, MSAASamples, GL_RGB, defaultWindowWidth, defaultWindowHeight);
     glBindRenderbuffer(GL_RENDERBUFFER, MSDepthStencilRenderBuffer);
     glRenderbufferStorageMultisample(GL_RENDERBUFFER, MSAASamples, GL_DEPTH24_STENCIL8, defaultWindowWidth, defaultWindowHeight);
+    glBindRenderbuffer(GL_RENDERBUFFER, blitDepthStencilRenderBuffer);
+    glRenderbufferStorageMultisample(GL_RENDERBUFFER, 0, GL_DEPTH24_STENCIL8, defaultWindowWidth, defaultWindowHeight);
+
+    // Setup multisampling framebuffer
 
     glBindFramebuffer(GL_FRAMEBUFFER, MSFBO);
     glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_RENDERBUFFER, MSColorRenderBuffer);
     glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, MSDepthStencilRenderBuffer);
-    glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
-    CameraManager::framebuffers = {FBO, MSFBO};
+    // Setup blit framebuffer
+
+    glBindFramebuffer(GL_FRAMEBUFFER, blitFBO);
+    for (int i = 0; i < TAASamples; i++){
+        glFramebufferTextureLayer(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0 + i, frameTextureArray, 0, i);
+    }
+    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, blitDepthStencilRenderBuffer);
+
+    // Setup TAA framebuffer
+
+    glBindFramebuffer(GL_FRAMEBUFFER, TAAFBO);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, combinedFrameTexture, 0);
+
+    CameraManager::framebuffers = frameBuffers;
 
     {
       auto cubeVertexShaderSource = loadShaderSource("assets/shaders/triangle.vert");
@@ -462,7 +485,8 @@ int main(){
       auto lampVertexShaderSource = loadShaderSource("assets/shaders/lamp.vert");
       auto lampFragmentShaderSource = loadShaderSource("assets/shaders/lamp.frag");
       auto screenRectVertexShaderSource = loadShaderSource("assets/shaders/screenrect.vert");
-      auto screenRectFragmentShaderSource = loadShaderSource("assets/shaders/screenrect.frag");
+      auto TAAFragmentShaderSource = loadShaderSource("assets/shaders/taa.frag");
+      auto postprocessFragmentShaderSource = loadShaderSource("assets/shaders/postprocess.frag");
 
       // Create cube shader program
 
@@ -480,13 +504,21 @@ int main(){
       glDeleteShader(lampVertexShader);
       glDeleteShader(lampFragmentShader);
 
-      // Create screen rect shader program
-
       GLuint screenRectVertexShader = createShader(GL_VERTEX_SHADER, screenRectVertexShaderSource);
-      GLuint screenRectFragmentShader = createShader(GL_FRAGMENT_SHADER, screenRectFragmentShaderSource);
-      screenRectShaderProgram = createProgram({screenRectVertexShader, screenRectFragmentShader});
+
+      // Create taa shader program
+
+      GLuint TAAFragmentShader = createShader(GL_FRAGMENT_SHADER, TAAFragmentShaderSource);
+      TAAShaderProgram = createProgram({screenRectVertexShader, TAAFragmentShader});
+      glDeleteShader(TAAFragmentShader);
+
+      // Create greyscale shader program
+
+      GLuint postprocessFragmentShader = createShader(GL_FRAGMENT_SHADER, postprocessFragmentShaderSource);
+      postprocessShaderProgram = createProgram({screenRectVertexShader, postprocessFragmentShader});
+      glDeleteShader(postprocessFragmentShader);
+
       glDeleteShader(screenRectVertexShader);
-      glDeleteShader(screenRectFragmentShader);
     }
 
     auto [cubeVertexData, cubeVertexIndices, cubeMaterial] = loadModelData("assets/meshes/cube.obj")[0];
@@ -571,11 +603,9 @@ int main(){
     glUseProgram(lampShaderProgram);
     glUniformBlockBinding(lampShaderProgram, glGetUniformBlockIndex(lampShaderProgram, "MatrixBlock"), 0);
 
-    glUseProgram(screenRectShaderProgram);
-    glUniform1f(glGetUniformLocation(screenRectShaderProgram, "cW"), 2.0f);
-    glUniform1f(glGetUniformLocation(screenRectShaderProgram, "pW"), 1.0f);
-    glUniform1i(glGetUniformLocation(screenRectShaderProgram, "currentTexture"), 0);
-    glUniform1i(glGetUniformLocation(screenRectShaderProgram, "previousTexture"), 1);
+    glUseProgram(TAAShaderProgram);
+    glUniform1i(glGetUniformLocation(TAAShaderProgram, "frames"), 0);
+    glUniform1i(glGetUniformLocation(TAAShaderProgram, "numFrames"), TAASamples);
 
     float forwardAxisValue, rightAxisValue, upAxisValue;
 
@@ -677,12 +707,14 @@ int main(){
 
         view = CameraManager::getViewMatrix();
         projection = CameraManager::getProjectionMatrix();
-        if (bTAA and colorIndex){
-            glm::vec3 sampleTrans = {0.5f / screenW, 0.5f / screenH, 0.0f};
+        if (bTAA){
+            glm::vec3 sampleTrans = TAASamplesPositions[colorIndex];
+            sampleTrans.x /= screenW;
+            sampleTrans.y /= screenH;
             projection = glm::translate(glm::mat4(1.0f), sampleTrans) * projection;
         }
 
-        glBindFramebuffer(GL_FRAMEBUFFER, FBO);
+        glBindFramebuffer(GL_FRAMEBUFFER, blitFBO);
         glDrawBuffer(GL_COLOR_ATTACHMENT0 + colorIndex);
         if (bMSAA){
             glBindFramebuffer(GL_FRAMEBUFFER, MSFBO);
@@ -752,33 +784,42 @@ int main(){
 
         if (bMSAA){
             glBindFramebuffer(GL_READ_FRAMEBUFFER, MSFBO);
-            glBindFramebuffer(GL_DRAW_FRAMEBUFFER, FBO);
+            glBindFramebuffer(GL_DRAW_FRAMEBUFFER, blitFBO);
+            glBlitFramebuffer(0, 0, screenW, screenH, 0, 0, screenW, screenH, GL_COLOR_BUFFER_BIT, GL_LINEAR);
+        }
+
+        glDisable(GL_DEPTH_TEST);
+
+        if (bTAA){
+            glBindFramebuffer(GL_FRAMEBUFFER, TAAFBO);
+            glActiveTexture(GL_TEXTURE0);
+            glBindTexture(GL_TEXTURE_2D_ARRAY, frameTextureArray);
+            glUseProgram(TAAShaderProgram);
+            glBindVertexArray(screenRectVAO);
+            glDrawElements(GL_TRIANGLES, screenRectVertexIndices.size(), GL_UNSIGNED_INT, nullptr);
+        }
+        else {
+            glBindFramebuffer(GL_READ_FRAMEBUFFER, blitFBO);
+            glReadBuffer(GL_COLOR_ATTACHMENT0 + colorIndex);
+            glBindFramebuffer(GL_DRAW_FRAMEBUFFER, TAAFBO);
             glBlitFramebuffer(0, 0, screenW, screenH, 0, 0, screenW, screenH, GL_COLOR_BUFFER_BIT, GL_LINEAR);
         }
 
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
-        glDisable(GL_DEPTH_TEST);
-        glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
-        glClear(GL_COLOR_BUFFER_BIT);
-
-        glUseProgram(screenRectShaderProgram);
+        glUseProgram(postprocessShaderProgram);
         glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, colorTextures[colorIndex]);
-        glUniform1i(glGetUniformLocation(screenRectShaderProgram, "bGreyScale"), bGreyScale);
-        glUniform1i(glGetUniformLocation(screenRectShaderProgram, "bTAA"), bTAA);
-        if (bTAA){
-            glActiveTexture(GL_TEXTURE1);
-            glBindTexture(GL_TEXTURE_2D, colorTextures[!colorIndex]);
-        }
+        glBindTexture(GL_TEXTURE_2D, combinedFrameTexture);
+        glUniform1i(glGetUniformLocation(postprocessShaderProgram, "bGreyScale"), bGreyScale);
         glBindVertexArray(screenRectVAO);
         glDrawElements(GL_TRIANGLES, screenRectVertexIndices.size(), GL_UNSIGNED_INT, nullptr);
         if (bShowMag){
             glBindVertexArray(magRectVAO);
             glDrawElements(GL_TRIANGLES, screenRectVertexIndices.size(), GL_UNSIGNED_INT, nullptr);
         }
+
         glEnable(GL_DEPTH_TEST);
 
-        colorIndex = !colorIndex;
+        colorIndex = (colorIndex + 1) % TAASamples;
 
         glfwSwapBuffers(window);
         glfwPollEvents();

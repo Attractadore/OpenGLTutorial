@@ -2,6 +2,7 @@
 #define MAX_POINT_LIGHTS 10
 #define MAX_DIR_LIGHTS 10
 #define MAX_SPOT_LIGHTS 10
+#define DISCARD_THRESHOLD 0.01f
 
 // Structs
 
@@ -110,6 +111,10 @@ vec3 spotLightLighting(SpotLight sl){
 
 void main()
 {
+    float alpha = texture(material.diffuse, fIn.tex).a;
+    if (alpha < DISCARD_THRESHOLD) {
+        discard;
+    }
     vec3 resColor = vec3(0.0f, 0.0f, 0.0f);
     for (int i = 0; i < lights.numPointLights; i++){
         resColor += pointLightLighting(lights.pointLights[i]);
@@ -120,6 +125,5 @@ void main()
     for (int i = 0; i < lights.numDirLights; i++){
         resColor += dirLightLighting(lights.dirLights[i]);
     }
-    float alpha = texture(material.diffuse, fIn.tex).a;
     fColor = vec4(resColor, alpha);
 }

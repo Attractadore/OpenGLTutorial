@@ -319,6 +319,12 @@ void setupGrass(S& grass, float distX, float distY, const Material& grassMateria
     }
 }
 
+void swapBuffers(int& readBuffer){
+    readBuffer = !readBuffer;
+    glReadBuffer(GL_COLOR_ATTACHMENT0 + readBuffer);
+    glDrawBuffer(GL_COLOR_ATTACHMENT0 + !readBuffer);
+}
+
 int main(){
     std::string windowTitle = "OpenGL Tutorial";
     float horizontalFOV = 90.0f;
@@ -345,6 +351,9 @@ int main(){
 
     bool bFlashLight = false;
     bool bGreyScale = false;
+    bool bBloom = true;
+    float bloomIntencity = 10.0f;
+    float bloomWidth = 4.0f;
     bool bTAA = false;
     int TAASamples = 4;
     std::vector<glm::vec3> TAASamplesPositions = {
@@ -400,10 +409,13 @@ int main(){
     glm::mat4 view;
     glm::mat4 projection;
 
-    GLuint cubeShaderProgram, lampShaderProgram, TAAShaderProgram, postprocessShaderProgram;
+    GLuint cubeShaderProgram, lampShaderProgram, TAAShaderProgram, greyscaleShaderProgram, bloomShaderProgram, screenRectShaderProgram;
     GLuint frameTextureArray;
-    GLuint combinedFrameTexture;
+    std::vector<GLuint> ppTextures(2);
+    GLuint& ppInputTexture = ppTextures[0];
+    GLuint& ppOutputTexture = ppTextures[1];
     int colorIndex = 0;
+    int readBuffer = 0;
 
     std::vector<GLuint> vertexBuffers(9);
 
@@ -433,7 +445,7 @@ int main(){
     GLuint& lightUBO = uniformBuffers[1];
 
     std::vector<GLuint> frameBuffers(3);
-    GLuint& TAAFBO = frameBuffers[0];
+    GLuint& PPFBO = frameBuffers[0];
     GLuint& MSFBO = frameBuffers[1];
     GLuint& blitFBO = frameBuffers[2];
 
@@ -524,13 +536,15 @@ int main(){
 
     // Setup rendering textures
 
-    glGenTextures(1, &combinedFrameTexture);
-    glBindTexture(GL_TEXTURE_2D, combinedFrameTexture);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, defaultWindowWidth, defaultWindowHeight, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glGenTextures(ppTextures.size(), ppTextures.data());
+    for (const auto& tex : ppTextures){
+        glBindTexture(GL_TEXTURE_2D, tex);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, defaultWindowWidth, defaultWindowHeight, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    }
 
     glGenTextures(1, &frameTextureArray);
     glBindTexture(GL_TEXTURE_2D_ARRAY, frameTextureArray);
@@ -564,10 +578,11 @@ int main(){
     }
     glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, blitDepthStencilRenderBuffer);
 
-    // Setup TAA framebuffer
+    // Setup postprocess framebuffer
 
-    glBindFramebuffer(GL_FRAMEBUFFER, TAAFBO);
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, combinedFrameTexture, 0);
+    glBindFramebuffer(GL_FRAMEBUFFER, PPFBO);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, ppTextures[0], 0);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1, GL_TEXTURE_2D, ppTextures[1], 0);
 
     CameraManager::framebuffers = frameBuffers;
 
@@ -577,8 +592,10 @@ int main(){
       auto lampVertexShaderSource = loadShaderSource("assets/shaders/lamp.vert");
       auto lampFragmentShaderSource = loadShaderSource("assets/shaders/lamp.frag");
       auto screenRectVertexShaderSource = loadShaderSource("assets/shaders/screenrect.vert");
+      auto screenRectFragmentShaderSource = loadShaderSource("assets/shaders/screenrect.frag");
       auto TAAFragmentShaderSource = loadShaderSource("assets/shaders/taa.frag");
-      auto postprocessFragmentShaderSource = loadShaderSource("assets/shaders/postprocess.frag");
+      auto greyscaleFragmentShaderSource = loadShaderSource("assets/shaders/greyscale.frag");
+      auto bloomFragmentShaderSource = loadShaderSource("assets/shaders/bloom.frag");
 
       // Create cube shader program
 
@@ -597,6 +614,9 @@ int main(){
       glDeleteShader(lampFragmentShader);
 
       GLuint screenRectVertexShader = createShader(GL_VERTEX_SHADER, screenRectVertexShaderSource);
+      GLuint screenRectFragmentShader = createShader(GL_FRAGMENT_SHADER, screenRectFragmentShaderSource);
+      screenRectShaderProgram = createProgram({screenRectVertexShader, screenRectFragmentShader});
+      glDeleteShader(screenRectFragmentShader);
 
       // Create taa shader program
 
@@ -606,9 +626,16 @@ int main(){
 
       // Create greyscale shader program
 
-      GLuint postprocessFragmentShader = createShader(GL_FRAGMENT_SHADER, postprocessFragmentShaderSource);
-      postprocessShaderProgram = createProgram({screenRectVertexShader, postprocessFragmentShader});
-      glDeleteShader(postprocessFragmentShader);
+      GLuint greyscaleFragmentShader = createShader(GL_FRAGMENT_SHADER, greyscaleFragmentShaderSource);
+      greyscaleShaderProgram = createProgram({screenRectVertexShader, greyscaleFragmentShader});
+      glDeleteShader(greyscaleFragmentShader);
+
+      // Create bloom shader program
+
+      GLuint bloomFragmentShader = createShader(GL_FRAGMENT_SHADER, bloomFragmentShaderSource);
+      bloomShaderProgram = createProgram({screenRectVertexShader, bloomFragmentShader});
+      std::printf("%d\n", bloomShaderProgram);
+      glDeleteShader(bloomFragmentShader);
 
       glDeleteShader(screenRectVertexShader);
     }
@@ -710,6 +737,13 @@ int main(){
     glUniform1i(glGetUniformLocation(TAAShaderProgram, "frames"), 0);
     glUniform1i(glGetUniformLocation(TAAShaderProgram, "numFrames"), TAASamples);
 
+    glUseProgram(greyscaleShaderProgram);
+    glUniform1i(glGetUniformLocation(bloomShaderProgram, "inputFrame"), 0);
+
+    glUseProgram(bloomShaderProgram);
+    glUniform1i(glGetUniformLocation(bloomShaderProgram, "inputFrame"), 0);
+    glUniform1f(glGetUniformLocation(bloomShaderProgram, "intencity"), bloomIntencity);
+
     float forwardAxisValue, rightAxisValue, upAxisValue;
 
     float previousTime = 0.0f;
@@ -743,6 +777,12 @@ int main(){
         }
         if (glfwGetKey(window, GLFW_KEY_6) == GLFW_PRESS){
             bMSAA = true;
+        }
+        if (glfwGetKey(window, GLFW_KEY_7) == GLFW_PRESS){
+            bBloom = false;
+        }
+        if (glfwGetKey(window, GLFW_KEY_8) == GLFW_PRESS){
+            bBloom = true;
         }
         if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS){
             disableCameraLook(window);
@@ -923,13 +963,18 @@ int main(){
             glBlitFramebuffer(0, 0, screenW, screenH, 0, 0, screenW, screenH, GL_COLOR_BUFFER_BIT, GL_LINEAR);
         }
 
-        // Do TAA
+        // Do postprocessing
 
         glDisable(GL_CULL_FACE);
         glDisable(GL_DEPTH_TEST);
+        glDisable(GL_BLEND);
+
+        // Setup initial input texture
+
+        glBindFramebuffer(GL_FRAMEBUFFER, PPFBO);
+        swapBuffers(readBuffer);
 
         if (bTAA){
-            glBindFramebuffer(GL_FRAMEBUFFER, TAAFBO);
             glActiveTexture(GL_TEXTURE0);
             glBindTexture(GL_TEXTURE_2D_ARRAY, frameTextureArray);
             glUseProgram(TAAShaderProgram);
@@ -939,23 +984,41 @@ int main(){
         else {
             glBindFramebuffer(GL_READ_FRAMEBUFFER, blitFBO);
             glReadBuffer(GL_COLOR_ATTACHMENT0 + colorIndex);
-            glBindFramebuffer(GL_DRAW_FRAMEBUFFER, TAAFBO);
             glBlitFramebuffer(0, 0, screenW, screenH, 0, 0, screenW, screenH, GL_COLOR_BUFFER_BIT, GL_LINEAR);
         }
+        glBindFramebuffer(GL_FRAMEBUFFER, PPFBO);
+        swapBuffers(readBuffer);
 
-        glBindFramebuffer(GL_FRAMEBUFFER, 0);
-        glUseProgram(postprocessShaderProgram);
-        glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, combinedFrameTexture);
-        glUniform1i(glGetUniformLocation(postprocessShaderProgram, "bGreyScale"), bGreyScale);
         glBindVertexArray(screenRectVAO);
-        glDrawElements(GL_TRIANGLES, rectVertexIndices.size(), GL_UNSIGNED_INT, nullptr);
+        glActiveTexture(GL_TEXTURE0);
+
+        if (bBloom) {
+            glUseProgram(bloomShaderProgram);
+            glUniform1f(glGetUniformLocation(bloomShaderProgram, "strideX"), bloomWidth / screenW);
+            glUniform1f(glGetUniformLocation(bloomShaderProgram, "strideY"), bloomWidth / screenH);
+            glBindTexture(GL_TEXTURE_2D, ppTextures[readBuffer]);
+            glDrawElements(GL_TRIANGLES, rectVertexIndices.size(), GL_UNSIGNED_INT, nullptr);
+            swapBuffers(readBuffer);
+        }
+        if (bGreyScale){
+            glUseProgram(greyscaleShaderProgram);
+            glBindTexture(GL_TEXTURE_2D, ppTextures[readBuffer]);
+            glDrawElements(GL_TRIANGLES, rectVertexIndices.size(), GL_UNSIGNED_INT, nullptr);
+            swapBuffers(readBuffer);
+        }
+
+        glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
+        glBlitFramebuffer(0, 0, screenW, screenH, 0, 0, screenW, screenH, GL_COLOR_BUFFER_BIT, GL_LINEAR);
+
         if (bShowMag){
+            glUseProgram(screenRectShaderProgram);
+            glBindTexture(GL_TEXTURE_2D, ppTextures[readBuffer]);
             glBindVertexArray(magRectVAO);
             glDrawElements(GL_TRIANGLES, rectVertexIndices.size(), GL_UNSIGNED_INT, nullptr);
         }
 
         glEnable(GL_DEPTH_TEST);
+        glEnable(GL_BLEND);
 
         colorIndex = (colorIndex + 1) % TAASamples;
 

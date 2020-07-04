@@ -21,6 +21,10 @@ struct Material {
     float shininess;
 };
 
+bool operator==(const Material& m1, const Material& m2){
+    return m1.diffuseMap == m2.diffuseMap and m1.specularMap == m2.specularMap and m1.shininess == m2.shininess;
+}
+
 struct MeshData{
     std::vector<GLfloat> vertexData;
     std::vector<GLuint> vertexIndices;
@@ -266,6 +270,55 @@ void calculateDirectionalLightMatrices(const S1& lights, S2& matrices){
     }
 }
 
+template <typename S>
+void setupWindows(S& windows, float distX, float distY, const Material& windowMaterial){
+    constexpr std::array<glm::vec3, 4> points = {
+        glm::vec3{-1.0f,  1.0f, 0.0f},
+        glm::vec3{ 1.0f,  1.0f, 0.0f},
+        glm::vec3{ 1.0f, -1.0f, 0.0f},
+        glm::vec3{-1.0f, -1.0f, 0.0f},
+    };
+    for (int i = 0; i < 4; i++){
+        glm::vec3 dir = glm::normalize(points[(i + 1) % 4] - points[i]);
+        float dist;
+        if (i % 1){
+            dist = distY;
+        }
+        else{
+            dist = distX;
+        }
+        glm::vec3 start = points[i] * dist;
+        start += dir * (1.0f + std::remainder(2.0f * dist, 2.0f));
+        glm::mat4 model(1.0f);
+        if (i % 2){
+            model = glm::rotate(model, glm::radians(90.0f), {0.0f, 0.0f, 1.0f});
+        }
+        glm::mat3 normal = glm::mat3(model);
+        for (int j = 0; j < std::floor(dist); j++){
+            glm::mat4 windowModel = glm::translate(glm::mat4(1.0f), start) * model;
+            windows.emplace_back(windowModel, normal, windowMaterial);
+            start += 2.0f * dir;
+        }
+    }
+
+}
+
+template <typename S>
+void setupGrass(S& grass, float distX, float distY, const Material& grassMaterial){
+    float radius = std::sqrt(distX * distX + distY * distY) + 1.0f;
+    int numGrassTufts = std::floor(glm::radians(360.0f) * radius);
+    float angleStep = glm::radians(360.0f) / numGrassTufts;
+    glm::vec3 dir = {0.0f, 1.0f, 0.0f};
+    for (int i = 0; i < numGrassTufts; i++){
+        float angle = angleStep * i;
+        glm::mat4 rotMat = glm::rotate(glm::mat4(1.0f), angle, {0.0f, 0.0f, 1.0f});
+        glm::mat4 transMat = glm::translate(glm::mat4(1.0f), glm::mat3(rotMat) * dir * radius);
+        glm::mat4 model = transMat * rotMat;
+        glm::mat3 normal = model;
+        grass.emplace_back(model, normal, grassMaterial);
+    }
+}
+
 int main(){
     std::string windowTitle = "OpenGL Tutorial";
     float horizontalFOV = 90.0f;
@@ -317,12 +370,28 @@ int main(){
 
     glm::mat4 floorModel = glm::translate(glm::mat4(1.0f), {0.0f, 0.0f, -1.0f});
     glm::mat3 floorNormal(1.0f);
-
     calculatePyramidMatrices(numCubesX, numCubesY, cubeDistanceX, cubeDistanceY, pyramidMatrices);
     calculateCubeMatrices(numCubesX, numCubesY, cubeDistanceX, cubeDistanceY, cubeMatrices);
     calculatePointLightMatrices(pointLights, pointLightMatrices);
     calculateSpotLightMatrices(spotLights, spotLightMatrices);
     calculateDirectionalLightMatrices(directionalLights, directionalLightMatrices);
+
+    Material windowMaterial = {
+        "window.png",
+        "window_specular.png",
+        64.0f
+    };
+    Material grassMaterial = {
+        "grass.png",
+        "grass_specular.png",
+        16.0f
+    };
+
+    std::vector<std::tuple<glm::mat4, glm::mat3, Material>> transparentObjects;
+    float windowRectDW = numCubesX * cubeDistanceX / 2.0f + 2.0f,
+          windowRectDH = numCubesY * cubeDistanceY / 2.0f + 2.0f;
+    setupWindows(transparentObjects, windowRectDW, windowRectDH, windowMaterial);
+    setupGrass(transparentObjects, windowRectDW, windowRectDH, grassMaterial);
 
     glm::vec3 cameraStartPos = {5.0f, 5.0f, 3.0f};
     glm::vec3 cameraStartLookDirection = -cameraStartPos;
@@ -336,7 +405,7 @@ int main(){
     GLuint combinedFrameTexture;
     int colorIndex = 0;
 
-    std::vector<GLuint> vertexBuffers(8);
+    std::vector<GLuint> vertexBuffers(9);
 
     GLuint& cubeVBO = vertexBuffers[0];
     GLuint& pyramidVBO = vertexBuffers[1];
@@ -346,8 +415,9 @@ int main(){
     GLuint& squarePlaneVBO = vertexBuffers[5];
     GLuint& screenRectVBO = vertexBuffers[6];
     GLuint& magRectVBO = vertexBuffers[7];
+    GLuint& transparentVBO = vertexBuffers[8];
 
-    std::vector<GLuint> elementBuffers(7);
+    std::vector<GLuint> elementBuffers(8);
 
     GLuint& cubeEBO = elementBuffers[0];
     GLuint& pyramidEBO = elementBuffers[1];
@@ -356,6 +426,7 @@ int main(){
     GLuint& coneEBO = elementBuffers[4];
     GLuint& squarePlaneEBO = elementBuffers[5];
     GLuint& screenRectEBO = elementBuffers[6];
+    GLuint& transparentEBO = elementBuffers[7];
 
     std::vector<GLuint> uniformBuffers(2);
     GLuint& matrixUBO = uniformBuffers[0];
@@ -371,7 +442,7 @@ int main(){
     GLuint& MSDepthStencilRenderBuffer = renderBuffers[1];
     GLuint& blitDepthStencilRenderBuffer = renderBuffers[2];
 
-    std::vector<GLuint> vertexArrays(8);
+    std::vector<GLuint> vertexArrays(9);
 
     GLuint& cubeVAO = vertexArrays[0];
     GLuint& pyramidVAO = vertexArrays[1];
@@ -381,6 +452,7 @@ int main(){
     GLuint& directionalLightVAO = vertexArrays[5];
     GLuint& screenRectVAO = vertexArrays[6];
     GLuint& magRectVAO = vertexArrays[7];
+    GLuint& transparentVAO = vertexArrays[8];
 
     constexpr std::array<GLfloat, 16> screenRectVertexData = {
         -1.0f, -1.0f, 0.0f, 0.0f,
@@ -396,9 +468,27 @@ int main(){
         -1.0f,  1.0f,   0.0f, 0.125f
     };
 
-    constexpr std::array<GLuint, 6> screenRectVertexIndices = {
+    constexpr std::array<GLuint, 6> rectVertexIndices = {
         0, 1, 2,
         2, 3, 0
+    };
+
+    constexpr std::array<GLfloat, 64> transparantObjectVertexData = {
+        1.0f, 0.0f, 1.0f, 0.0f, -1.0f, 0.0f, 1.0f, 1.0f,
+        1.0f, 0.0f,-1.0f, 0.0f, -1.0f, 0.0f, 1.0f, 0.0f,
+       -1.0f, 0.0f,-1.0f, 0.0f, -1.0f, 0.0f, 0.0f, 0.0f,
+       -1.0f, 0.0f, 1.0f, 0.0f, -1.0f, 0.0f, 0.0f, 1.0f,
+        1.0f, 0.0f, 1.0f, 0.0f,  1.0f, 0.0f, 1.0f, 1.0f,
+        1.0f, 0.0f,-1.0f, 0.0f,  1.0f, 0.0f, 1.0f, 0.0f,
+       -1.0f, 0.0f,-1.0f, 0.0f,  1.0f, 0.0f, 0.0f, 0.0f,
+       -1.0f, 0.0f, 1.0f, 0.0f,  1.0f, 0.0f, 0.0f, 1.0f,
+    };
+
+    constexpr std::array<GLuint, 12> transparentObjectVertexIndices = {
+        0, 3, 2,
+        2, 1, 0,
+        4, 5, 6,
+        6, 7, 4
     };
 
     glfwInit();
@@ -426,6 +516,8 @@ int main(){
         glDebugMessageCallback(debugFunction, nullptr);
     }
     glEnable(GL_DEPTH_TEST);
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
     glGenFramebuffers(frameBuffers.size(), frameBuffers.data());
     glGenRenderbuffers(renderBuffers.size(), renderBuffers.data());
@@ -434,7 +526,7 @@ int main(){
 
     glGenTextures(1, &combinedFrameTexture);
     glBindTexture(GL_TEXTURE_2D, combinedFrameTexture);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, defaultWindowWidth, defaultWindowHeight, 0, GL_RGB, GL_UNSIGNED_BYTE, nullptr);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, defaultWindowWidth, defaultWindowHeight, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
@@ -442,7 +534,7 @@ int main(){
 
     glGenTextures(1, &frameTextureArray);
     glBindTexture(GL_TEXTURE_2D_ARRAY, frameTextureArray);
-    glTexImage3D(GL_TEXTURE_2D_ARRAY, 0, GL_RGB, defaultWindowWidth, defaultWindowHeight, TAASamples, 0, GL_RGB, GL_UNSIGNED_BYTE, nullptr);
+    glTexImage3D(GL_TEXTURE_2D_ARRAY, 0, GL_RGBA, defaultWindowWidth, defaultWindowHeight, TAASamples, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAX_LEVEL, 0);
@@ -452,7 +544,7 @@ int main(){
     // Setup renderbuffers
 
     glBindRenderbuffer(GL_RENDERBUFFER, MSColorRenderBuffer);
-    glRenderbufferStorageMultisample(GL_RENDERBUFFER, MSAASamples, GL_RGB, defaultWindowWidth, defaultWindowHeight);
+    glRenderbufferStorageMultisample(GL_RENDERBUFFER, MSAASamples, GL_RGBA, defaultWindowWidth, defaultWindowHeight);
     glBindRenderbuffer(GL_RENDERBUFFER, MSDepthStencilRenderBuffer);
     glRenderbufferStorageMultisample(GL_RENDERBUFFER, MSAASamples, GL_DEPTH24_STENCIL8, defaultWindowWidth, defaultWindowHeight);
     glBindRenderbuffer(GL_RENDERBUFFER, blitDepthStencilRenderBuffer);
@@ -538,8 +630,9 @@ int main(){
     storeData(sphereVertexData, sphereVertexIndices, sphereVBO, sphereEBO);
     storeData(coneVertexData, coneVertexIndices, coneVBO, coneEBO);
     storeData(squarePlaneVertexData, squarePlaneVertexIndices, squarePlaneVBO, squarePlaneEBO);
-    storeData(screenRectVertexData, screenRectVertexIndices, screenRectVBO, screenRectEBO);
-    storeData(magRectVertexData, screenRectVertexIndices, magRectVBO, 0);
+    storeData(screenRectVertexData, rectVertexIndices, screenRectVBO, screenRectEBO);
+    storeData(magRectVertexData, rectVertexIndices, magRectVBO, 0);
+    storeData(transparantObjectVertexData, transparentObjectVertexIndices, transparentVBO, transparentEBO);
 
     // Setup VAOs
 
@@ -552,6 +645,16 @@ int main(){
     setupLamp(directionalLightVAO, squarePlaneVBO, squarePlaneEBO);
     setupRenderRect(screenRectVAO, screenRectVBO, screenRectEBO);
     setupRenderRect(magRectVAO, magRectVBO, screenRectEBO);
+    setupModel(transparentVAO, transparentVBO, transparentEBO);
+
+    // Set floor texture wrapping parameters
+
+    glBindTexture(GL_TEXTURE_2D, TextureLoader::getTextureId(circularPlaneMaterial.diffuseMap));
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+    glBindTexture(GL_TEXTURE_2D, TextureLoader::getTextureId(circularPlaneMaterial.specularMap));
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
 
     glGenBuffers(uniformBuffers.size(), uniformBuffers.data());
 
@@ -790,12 +893,39 @@ int main(){
             glDrawElements(GL_TRIANGLES, squarePlaneVertexIndices.size(), GL_UNSIGNED_INT, nullptr);
         }
 
+        glEnable(GL_CULL_FACE);
+
+        // Draw transparent objects
+
+        glUseProgram(cubeShaderProgram);
+
+        std::sort(transparentObjects.begin(), transparentObjects.end(),
+                  [&camera] (const std::tuple<glm::mat4, glm::mat3, Material>& rhs, const std::tuple<glm::mat4, glm::mat3, Material>& lhs){
+                        auto cameraPos = camera->getCameraPos();
+                        auto rhs_pos = glm::vec3(std::get<0>(rhs)[3]);
+                        auto lhs_pos = glm::vec3(std::get<0>(lhs)[3]);
+                        return glm::length(rhs_pos - cameraPos) > glm::length(lhs_pos - cameraPos);
+                  }
+        );
+
+        for (const auto& [model, normal, material] : transparentObjects){
+            setShaderMatrial(cubeShaderProgram, material);
+            setModelUniforms(cubeShaderProgram, model, normal);
+            glBindVertexArray(transparentVAO);
+            glDrawElements(GL_TRIANGLES, transparentObjectVertexIndices.size(), GL_UNSIGNED_INT, nullptr);
+        }
+
+        // Blit MSAA framebuffer
+
         if (bMSAA){
             glBindFramebuffer(GL_READ_FRAMEBUFFER, MSFBO);
             glBindFramebuffer(GL_DRAW_FRAMEBUFFER, blitFBO);
             glBlitFramebuffer(0, 0, screenW, screenH, 0, 0, screenW, screenH, GL_COLOR_BUFFER_BIT, GL_LINEAR);
         }
 
+        // Do TAA
+
+        glDisable(GL_CULL_FACE);
         glDisable(GL_DEPTH_TEST);
 
         if (bTAA){
@@ -804,7 +934,7 @@ int main(){
             glBindTexture(GL_TEXTURE_2D_ARRAY, frameTextureArray);
             glUseProgram(TAAShaderProgram);
             glBindVertexArray(screenRectVAO);
-            glDrawElements(GL_TRIANGLES, screenRectVertexIndices.size(), GL_UNSIGNED_INT, nullptr);
+            glDrawElements(GL_TRIANGLES, rectVertexIndices.size(), GL_UNSIGNED_INT, nullptr);
         }
         else {
             glBindFramebuffer(GL_READ_FRAMEBUFFER, blitFBO);
@@ -819,10 +949,10 @@ int main(){
         glBindTexture(GL_TEXTURE_2D, combinedFrameTexture);
         glUniform1i(glGetUniformLocation(postprocessShaderProgram, "bGreyScale"), bGreyScale);
         glBindVertexArray(screenRectVAO);
-        glDrawElements(GL_TRIANGLES, screenRectVertexIndices.size(), GL_UNSIGNED_INT, nullptr);
+        glDrawElements(GL_TRIANGLES, rectVertexIndices.size(), GL_UNSIGNED_INT, nullptr);
         if (bShowMag){
             glBindVertexArray(magRectVAO);
-            glDrawElements(GL_TRIANGLES, screenRectVertexIndices.size(), GL_UNSIGNED_INT, nullptr);
+            glDrawElements(GL_TRIANGLES, rectVertexIndices.size(), GL_UNSIGNED_INT, nullptr);
         }
 
         glEnable(GL_DEPTH_TEST);

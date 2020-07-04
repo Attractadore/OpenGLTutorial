@@ -120,5 +120,6 @@ void main()
     for (int i = 0; i < lights.numDirLights; i++){
         resColor += dirLightLighting(lights.dirLights[i]);
     }
-    fColor = vec4(resColor, 1.0f);
+    float alpha = texture(material.diffuse, fIn.tex).a;
+    fColor = vec4(resColor, alpha);
 }

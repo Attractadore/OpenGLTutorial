@@ -6,7 +6,6 @@
 
 std::weak_ptr<Camera> CameraManager::currentCamera;
 GLFWwindow* CameraManager::currentWindow = nullptr;
-std::vector<GLuint> CameraManager::framebuffers;
 float CameraManager::mouseX = 0.0f;
 float CameraManager::mouseY = 0.0f;
 float CameraManager::mouseSensitivityX = 0.05f;
@@ -14,158 +13,58 @@ float CameraManager::mouseSensitivityY = 0.05f;
 bool CameraManager::bInvertMouseX = false;
 bool CameraManager::bInvertMouseY = false;
 bool CameraManager::bStartup = true;
-float CameraManager::aspectRatio = 16.0f / 9.0f;
+float CameraManager::aspectRatio = 1.0f;
 float CameraManager::horizontalFOV = 90.0f;
 float CameraManager::verticalFOV = CameraManager::horizontalFOV / aspectRatio;
 float CameraManager::nearPlane = 0.1f;
 float CameraManager::farPlane = 100.0f;
-int CameraManager::viewportH = 720;
-int CameraManager::viewportW = CameraManager::viewportH * CameraManager::aspectRatio;
-
-void CameraManager::setActiveCamera(const std::shared_ptr<Camera>& newCamera){
-    CameraManager::currentCamera = newCamera;
-}
-
-void CameraManager::setActiveWindow(GLFWwindow *window){
-    CameraManager::removeMouseMovementCallback();
-    CameraManager::removeViewportResizeCallback();
-    CameraManager::currentWindow = window;
-}
-
-bool resizeFrameBufferAttachment(GLenum attachment, int newWidth, int newHeight){
-    GLint boundObjectType = GL_NONE;
-    GLint boundObjectName = 0;
-    glGetFramebufferAttachmentParameteriv(GL_FRAMEBUFFER, attachment,
-                                          GL_FRAMEBUFFER_ATTACHMENT_OBJECT_TYPE, &boundObjectType);
-    if (!(boundObjectType == GL_TEXTURE or boundObjectType == GL_RENDERBUFFER))
-        return false;
-    glGetFramebufferAttachmentParameteriv(GL_FRAMEBUFFER, attachment,
-                                          GL_FRAMEBUFFER_ATTACHMENT_OBJECT_NAME, &boundObjectName);
-    auto [viewportW, viewportH] = CameraManager::getViewportSize();
-    float aspectRationW = 1.0f,
-          aspectRationH = 1.0f;
-    int currentWidth, currentHeight;
-    if (boundObjectType == GL_TEXTURE){
-        GLint currentTexture = 0;
-        GLint currentTextureMultisample = 0;
-        GLint currentTextureArray = 0;
-        glGetIntegerv(GL_TEXTURE_BINDING_2D, &currentTexture);
-        glGetIntegerv(GL_TEXTURE_BINDING_2D_MULTISAMPLE, &currentTextureMultisample);
-        glGetIntegerv(GL_TEXTURE_BINDING_2D_ARRAY, &currentTextureArray);
-
-        GLenum bindTarget = GL_TEXTURE_2D;
-        glGetError();
-        glBindTexture(bindTarget, boundObjectName);
-        if (glGetError() == GL_INVALID_OPERATION){
-            bindTarget = GL_TEXTURE_2D_MULTISAMPLE;
-            glBindTexture(bindTarget, boundObjectName);
-            if (glGetError() == GL_INVALID_OPERATION){
-                bindTarget = GL_TEXTURE_2D_ARRAY;
-                glBindTexture(bindTarget, boundObjectName);
-                if (glGetError() == GL_INVALID_OPERATION){
-                    glBindTexture(GL_TEXTURE_2D, currentTexture);
-                    glBindTexture(GL_TEXTURE_2D_MULTISAMPLE, currentTextureMultisample);
-                    glBindTexture(GL_TEXTURE_2D_ARRAY, currentTextureArray);
-                    return false;
-                }
-            }
-        }
-        GLint boundTextureFormat = GL_RGB;
-        glGetTexLevelParameteriv(bindTarget, 0, GL_TEXTURE_INTERNAL_FORMAT, &boundTextureFormat);
-        glGetTexLevelParameteriv(bindTarget, 0, GL_TEXTURE_WIDTH, &currentWidth);
-        glGetTexLevelParameteriv(bindTarget, 0, GL_TEXTURE_HEIGHT, &currentHeight);
-        aspectRationW = static_cast<float>(currentWidth) / viewportW;
-        aspectRationH = static_cast<float>(currentHeight) / viewportH;
-        newWidth *= aspectRationW;
-        newHeight *= aspectRationH;
-
-        if (bindTarget == GL_TEXTURE_2D){
-            glTexImage2D(GL_TEXTURE_2D, 0, boundTextureFormat, newWidth, newHeight, 0, GL_RGB, GL_UNSIGNED_BYTE, nullptr);
-        }
-        else if (bindTarget == GL_TEXTURE_2D_MULTISAMPLE){
-            GLint boundTextureSamples = 1;
-            glGetTexLevelParameteriv(GL_TEXTURE_2D_MULTISAMPLE, 0, GL_TEXTURE_SAMPLES, &boundTextureSamples);
-            glTexImage2DMultisample(GL_TEXTURE_2D_MULTISAMPLE, boundTextureSamples, boundTextureFormat, newWidth, newHeight, GL_TRUE);
-        }
-        else if (bindTarget == GL_TEXTURE_2D_ARRAY){
-            GLint boundTextureLayers = 1;
-            glGetTexLevelParameteriv(GL_TEXTURE_2D_ARRAY, 0, GL_TEXTURE_DEPTH, &boundTextureLayers);
-            glTexImage3D(GL_TEXTURE_2D_ARRAY, 0, boundTextureFormat, newWidth, newHeight, boundTextureLayers, 0, GL_RGB, GL_UNSIGNED_BYTE, nullptr);
-        }
-        glBindTexture(GL_TEXTURE_2D, currentTexture);
-        glBindTexture(GL_TEXTURE_2D_MULTISAMPLE, currentTextureMultisample);
-        glBindTexture(GL_TEXTURE_2D_ARRAY, currentTextureArray);
-    }
-    else if (boundObjectType == GL_RENDERBUFFER){
-        GLint currentRenderbuffer = 0;
-        glGetIntegerv(GL_RENDERBUFFER_BINDING, &currentRenderbuffer);
-        glBindRenderbuffer(GL_RENDERBUFFER, boundObjectName);
-        GLint boundRenderBufferSamples = 1;
-        glGetRenderbufferParameteriv(GL_RENDERBUFFER, GL_RENDERBUFFER_SAMPLES, &boundRenderBufferSamples);
-        GLint boundRenderBufferFormat = GL_DEPTH24_STENCIL8;
-        glGetRenderbufferParameteriv(GL_RENDERBUFFER, GL_RENDERBUFFER_INTERNAL_FORMAT, &boundRenderBufferFormat);
-        glGetRenderbufferParameteriv(GL_RENDERBUFFER, GL_RENDERBUFFER_WIDTH, &currentWidth);
-        glGetRenderbufferParameteriv(GL_RENDERBUFFER, GL_RENDERBUFFER_HEIGHT, &currentHeight);
-        aspectRationW = static_cast<float>(currentWidth) / viewportW;
-        aspectRationH = static_cast<float>(currentHeight) / viewportH;
-        newWidth *= aspectRationW;
-        newHeight *= aspectRationH;
-        if (boundRenderBufferSamples > 1){
-            glRenderbufferStorageMultisample(GL_RENDERBUFFER, boundRenderBufferSamples, boundRenderBufferFormat, newWidth, newHeight);
-        }
-        else {
-            glRenderbufferStorage(GL_RENDERBUFFER, boundRenderBufferFormat, newWidth, newHeight);
-        }
-        glBindRenderbuffer(GL_RENDERBUFFER, currentRenderbuffer);
-    }
-    return true;
-}
-
-void CameraManager::setViewportSize(int width, int height){
-    CameraManager::aspectRatio = static_cast<float>(width) / static_cast<float>(height);
-    CameraManager::setVerticalFOV(CameraManager::verticalFOV);
-
-    if (currentWindow){
-        glViewport(0, 0, width, height);
-    }
-
-    GLint currentFrameBuffer = 0;
-    glGetIntegerv(GL_FRAMEBUFFER_BINDING, &currentFrameBuffer);
-    GLint maxColorAttachments = 8;
-    glGetIntegerv(GL_MAX_COLOR_ATTACHMENTS, &maxColorAttachments);
-    for (const auto& framebuffer: framebuffers){
-        if (framebuffer){
-            glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
-            for (int i = 0; i < maxColorAttachments; i++){
-                if (!resizeFrameBufferAttachment(GL_COLOR_ATTACHMENT0 + i, width, height))
-                    break;
-            }
-            resizeFrameBufferAttachment(GL_DEPTH_STENCIL_ATTACHMENT, width, height);
-        }
-    }
-    glBindFramebuffer(GL_FRAMEBUFFER, currentFrameBuffer);
-    CameraManager::viewportW = width;
-    CameraManager::viewportH = height;
-
-    CameraManager::bStartup = true;
-}
+glm::mat4 CameraManager::view;
+glm::mat4 CameraManager::projection;
 
 void CameraManager::setHorizontalFOV(float horizontalFOV){
     CameraManager::horizontalFOV = horizontalFOV;
     CameraManager::verticalFOV = horizontalFOV / CameraManager::aspectRatio;
+    CameraManager::updateProjectionMatrix();
 }
 
 void CameraManager::setVerticalFOV(float verticalFOV){
     CameraManager::horizontalFOV = verticalFOV * CameraManager::aspectRatio;
     CameraManager::verticalFOV = verticalFOV;
+    CameraManager::updateProjectionMatrix();
 }
 
 void CameraManager::setNearPlane(float nearPlane){
     CameraManager::nearPlane = nearPlane;
+    CameraManager::updateProjectionMatrix();
 }
 
 void CameraManager::setFarPlane(float farPlane){
     CameraManager::farPlane = farPlane;
+    CameraManager::updateProjectionMatrix();
+}
+
+const glm::mat4& CameraManager::getViewMatrix(){
+    CameraManager::updateViewMatrix();
+    return CameraManager::view;
+}
+
+const glm::mat4& CameraManager::getProjectionMatrix(){
+    return CameraManager::projection;
+}
+
+void CameraManager::updateViewMatrix(){
+    if (CameraManager::currentCamera.expired()){
+        return;
+    }
+    auto currentCameraPointer = CameraManager::currentCamera.lock();
+    auto cameraPos = currentCameraPointer->getCameraPos();
+    auto cameraForwardVector = currentCameraPointer->getCameraForwardVector();
+    auto cameraUpVector = currentCameraPointer->getCameraUpVector();
+    CameraManager::view = glm::lookAt(cameraPos, cameraPos + cameraForwardVector, cameraUpVector);
+}
+
+void CameraManager::updateProjectionMatrix(){
+    CameraManager::projection = glm::perspective(glm::radians(CameraManager::verticalFOV), CameraManager::aspectRatio, CameraManager::nearPlane, CameraManager::farPlane);
 }
 
 void CameraManager::activateMouseMovementCallback(){
@@ -181,20 +80,6 @@ void CameraManager::removeMouseMovementCallback(){
         return;
     }
     glfwSetCursorPosCallback(CameraManager::currentWindow, nullptr);
-}
-
-void CameraManager::activateViewportResizeCallback(){
-    if (!CameraManager::currentWindow){
-        return;
-    }
-    glfwSetFramebufferSizeCallback(CameraManager::currentWindow, CameraManager::viewportResizeCallback);
-}
-
-void CameraManager::removeViewportResizeCallback(){
-    if (!CameraManager::currentWindow){
-        return;
-    }
-    glfwSetFramebufferSizeCallback(CameraManager::currentWindow, nullptr);
 }
 
 void CameraManager::mouseMovementCallback(GLFWwindow *window, double mouseX, double mouseY){
@@ -215,15 +100,12 @@ void CameraManager::mouseMovementCallback(GLFWwindow *window, double mouseX, dou
     CameraManager::addCameraPitchInput(-1.0f * dMouseY * CameraManager::mouseSensitivityY);
 }
 
-void CameraManager::viewportResizeCallback(GLFWwindow *window, int width, int height){
-    CameraManager::setViewportSize(width, height);
-}
-
 void CameraManager::addCameraYawInput(float degrees){
     if (CameraManager::currentCamera.expired()){
         return;
     }
     CameraManager::currentCamera.lock()->addYaw(degrees);
+    CameraManager::updateViewMatrix();
 }
 
 void CameraManager::addCameraPitchInput(float degrees){
@@ -231,23 +113,44 @@ void CameraManager::addCameraPitchInput(float degrees){
         return;
     }
     CameraManager::currentCamera.lock()->addPitch(degrees);
+    CameraManager::updateViewMatrix();
 }
 
-glm::mat4 CameraManager::getViewMatrix(){
-    if (CameraManager::currentCamera.expired()){
-        return glm::mat4(1.0f);
+void CameraManager::enableCameraLook(){
+    if (!CameraManager::currentWindow){
+        return;
     }
-    auto currentCameraPointer = CameraManager::currentCamera.lock();
-    auto cameraPos = currentCameraPointer->getCameraPos();
-    auto cameraForwardVector = currentCameraPointer->getCameraForwardVector();
-    auto cameraUpVector = currentCameraPointer->getCameraUpVector();
-    return glm::lookAt(cameraPos, cameraPos + cameraForwardVector, cameraUpVector);
+    glfwSetInputMode(CameraManager::currentWindow, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+    CameraManager::activateMouseMovementCallback();
 }
 
-glm::mat4 CameraManager::getProjectionMatrix(){
-    return glm::perspective(glm::radians(CameraManager::verticalFOV), CameraManager::aspectRatio, CameraManager::nearPlane, CameraManager::farPlane);
+void CameraManager::disableCameraLook(){
+    if (!CameraManager::currentWindow){
+        return;
+    }
+    glfwSetInputMode(CameraManager::currentWindow, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
+    CameraManager::removeMouseMovementCallback();
 }
 
-std::pair<int, int> CameraManager::getViewportSize(){
-    return {CameraManager::viewportW, CameraManager::viewportH};
+void CameraManager::initialize(int viewportW, int viewportH){
+    glfwInit();
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
+    glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+    glfwWindowHint(GLFW_OPENGL_DEBUG_CONTEXT, GLFW_TRUE);
+    glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
+    CameraManager::currentWindow = glfwCreateWindow(viewportW, viewportH, "OpenGL tutorial", nullptr, nullptr);
+    glfwMakeContextCurrent(CameraManager::currentWindow);
+    CameraManager::aspectRatio = static_cast<float>(viewportW) / static_cast<float>(viewportH);
+    CameraManager::setVerticalFOV(CameraManager::horizontalFOV / CameraManager::aspectRatio);
+}
+
+void CameraManager::terminate(){
+    CameraManager::currentCamera.reset();
+    CameraManager::currentWindow = nullptr;
+    glfwTerminate();
+}
+
+GLFWwindow* CameraManager::getWindow(){
+    return CameraManager::currentWindow;
 }

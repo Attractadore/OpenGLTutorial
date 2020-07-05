@@ -13,9 +13,6 @@
 #include <assimp/scene.h>
 #include <assimp/postprocess.h>
 
-#include <typeinfo>
-#include <iostream>
-#include <iterator>
 #include <fstream>
 
 struct Material {
@@ -49,16 +46,6 @@ std::string loadShaderSource(std::filesystem::path filePath){
     std::string fileContents(fileSize, ' ');
     is.read(fileContents.data(), fileSize);
     return fileContents;
-}
-
-void enableCameraLook(GLFWwindow* window){
-    glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
-    CameraManager::activateMouseMovementCallback();
-}
-
-void disableCameraLook(GLFWwindow* window){
-    glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
-    CameraManager::removeMouseMovementCallback();
 }
 
 GLuint createShader(GLenum shaderType, std::string shaderSource){
@@ -331,9 +318,10 @@ void swapBuffers(int& readBufferIndex){
 int main(){
     std::string windowTitle = "OpenGL Tutorial";
     float horizontalFOV = 90.0f;
-    float aspectRatio = 16.0f / 9.0f;
-    int defaultWindowHeight = 720,
-        defaultWindowWidth = defaultWindowHeight * aspectRatio;
+    int windowW, windowH;
+    float windowAspectRatio = 16.0f / 9.0f;
+    windowH = 720.0f;
+    windowW = windowH * windowAspectRatio;
     float cameraSpeed = 5.0f;
 
     constexpr int MAX_POINT_LIGHTS = 10,
@@ -504,20 +492,11 @@ int main(){
         6, 7, 4
     };
 
-    glfwInit();
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
-    glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
-    glfwWindowHint(GLFW_OPENGL_DEBUG_CONTEXT, GLFW_TRUE);
-    GLFWwindow* window = glfwCreateWindow(defaultWindowWidth, defaultWindowHeight, windowTitle.c_str(), nullptr, nullptr);
-    glfwMakeContextCurrent(window);
-    gladLoadGLLoader((GLADloadproc)glfwGetProcAddress);
-    CameraManager::setActiveWindow(window);
-    CameraManager::activateViewportResizeCallback();
-    CameraManager::setViewportSize(defaultWindowWidth, defaultWindowHeight);
+    CameraManager::initialize(windowW, windowH);
     CameraManager::setHorizontalFOV(horizontalFOV);
-    CameraManager::setActiveCamera(camera);
-    enableCameraLook(window);
+    CameraManager::currentCamera = camera;
+    CameraManager::enableCameraLook();
+    gladLoadGLLoader((GLADloadproc)glfwGetProcAddress);
 
     ilInit();
     ilEnable(IL_ORIGIN_SET);
@@ -537,7 +516,7 @@ int main(){
     glGenTextures(fullResPPTextures.size(), fullResPPTextures.data());
     for (const auto& tex : fullResPPTextures){
         glBindTexture(GL_TEXTURE_2D, tex);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, defaultWindowWidth, defaultWindowHeight, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, windowW, windowH, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
@@ -547,7 +526,7 @@ int main(){
     glGenTextures(quarterResPPTextures.size(), quarterResPPTextures.data());
     for (const auto& tex : quarterResPPTextures){
         glBindTexture(GL_TEXTURE_2D, tex);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, defaultWindowWidth / 2, defaultWindowHeight / 2, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, windowW / 2, windowH / 2, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
@@ -556,7 +535,7 @@ int main(){
 
     glGenTextures(1, &frameTextureArray);
     glBindTexture(GL_TEXTURE_2D_ARRAY, frameTextureArray);
-    glTexImage3D(GL_TEXTURE_2D_ARRAY, 0, GL_RGBA, defaultWindowWidth, defaultWindowHeight, TAASamples, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+    glTexImage3D(GL_TEXTURE_2D_ARRAY, 0, GL_RGBA, windowW, windowH, TAASamples, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAX_LEVEL, 0);
@@ -567,11 +546,11 @@ int main(){
 
     glGenRenderbuffers(renderBuffers.size(), renderBuffers.data());
     glBindRenderbuffer(GL_RENDERBUFFER, MSColorRenderBuffer);
-    glRenderbufferStorageMultisample(GL_RENDERBUFFER, MSAASamples, GL_RGBA, defaultWindowWidth, defaultWindowHeight);
+    glRenderbufferStorageMultisample(GL_RENDERBUFFER, MSAASamples, GL_RGBA, windowW, windowH);
     glBindRenderbuffer(GL_RENDERBUFFER, MSDepthStencilRenderBuffer);
-    glRenderbufferStorageMultisample(GL_RENDERBUFFER, MSAASamples, GL_DEPTH24_STENCIL8, defaultWindowWidth, defaultWindowHeight);
+    glRenderbufferStorageMultisample(GL_RENDERBUFFER, MSAASamples, GL_DEPTH24_STENCIL8, windowW, windowH);
     glBindRenderbuffer(GL_RENDERBUFFER, blitDepthStencilRenderBuffer);
-    glRenderbufferStorageMultisample(GL_RENDERBUFFER, 0, GL_DEPTH24_STENCIL8, defaultWindowWidth, defaultWindowHeight);
+    glRenderbufferStorageMultisample(GL_RENDERBUFFER, 0, GL_DEPTH24_STENCIL8, windowW, windowH);
 
     // Setup framebuffers
 
@@ -601,8 +580,6 @@ int main(){
     glBindFramebuffer(GL_FRAMEBUFFER, QRFBO);
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, quarterResPPTextures[0], 0);
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1, GL_TEXTURE_2D, quarterResPPTextures[1], 0);
-
-    CameraManager::framebuffers = frameBuffers;
 
     {
       auto cubeVertexShaderSource = loadShaderSource("assets/shaders/triangle.vert");
@@ -784,6 +761,8 @@ int main(){
 
     float previousTime = 0.0f;
 
+    auto window = CameraManager::getWindow();
+
     while (not glfwWindowShouldClose(window)){
         float currentTime = glfwGetTime();
         float deltaTime = currentTime - previousTime;
@@ -821,10 +800,10 @@ int main(){
             bBloom = true;
         }
         if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS){
-            disableCameraLook(window);
+            CameraManager::disableCameraLook();
         }
         if (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS){
-            enableCameraLook(window);
+            CameraManager::enableCameraLook();
         }
         if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS){
             forwardAxisValue += 1.0f;
@@ -882,14 +861,12 @@ int main(){
             glBufferSubData(GL_UNIFORM_BUFFER, offset, 4, &numUsedSpotlights);
         }
 
-        auto [screenW, screenH] = CameraManager::getViewportSize();
-
         glm::mat4 view = CameraManager::getViewMatrix(),
                   projection = CameraManager::getProjectionMatrix();
         if (bTAA){
             glm::vec3 sampleTrans = TAASamplesPositions[colorIndex];
-            sampleTrans.x /= screenW;
-            sampleTrans.y /= screenH;
+            sampleTrans.x /= windowW;
+            sampleTrans.y /= windowH;
             projection = glm::translate(glm::mat4(1.0f), sampleTrans) * projection;
         }
 
@@ -996,7 +973,7 @@ int main(){
         if (bMSAA){
             glBindFramebuffer(GL_READ_FRAMEBUFFER, MSFBO);
             glBindFramebuffer(GL_DRAW_FRAMEBUFFER, blitFBO);
-            glBlitFramebuffer(0, 0, screenW, screenH, 0, 0, screenW, screenH, GL_COLOR_BUFFER_BIT, GL_LINEAR);
+            glBlitFramebuffer(0, 0, windowW, windowH, 0, 0, windowW, windowH, GL_COLOR_BUFFER_BIT, GL_LINEAR);
         }
 
         // Do postprocessing
@@ -1020,7 +997,7 @@ int main(){
         else {
             glBindFramebuffer(GL_READ_FRAMEBUFFER, blitFBO);
             glReadBuffer(GL_COLOR_ATTACHMENT0 + colorIndex);
-            glBlitFramebuffer(0, 0, screenW, screenH, 0, 0, screenW, screenH, GL_COLOR_BUFFER_BIT, GL_LINEAR);
+            glBlitFramebuffer(0, 0, windowW, windowH, 0, 0, windowW, windowH, GL_COLOR_BUFFER_BIT, GL_LINEAR);
         }
         glBindFramebuffer(GL_FRAMEBUFFER, PPFBO);
         swapBuffers(fullResReadIndex);
@@ -1030,10 +1007,10 @@ int main(){
 
         if (bBloom) {
             glBindFramebuffer(GL_DRAW_FRAMEBUFFER, QRFBO);
-            glViewport(0, 0, screenW / 2, screenH / 2);
+            glViewport(0, 0, windowW / 2, windowH / 2);
             swapBuffers(quarterResReadIndex);
             glReadBuffer(GL_COLOR_ATTACHMENT0 + fullResReadIndex);
-            glBlitFramebuffer(0, 0, screenW, screenH, 0, 0, screenW / 2, screenH / 2, GL_COLOR_BUFFER_BIT, GL_LINEAR);
+            glBlitFramebuffer(0, 0, windowW, windowH, 0, 0, windowW / 2, windowH / 2, GL_COLOR_BUFFER_BIT, GL_LINEAR);
             glBindFramebuffer(GL_FRAMEBUFFER, QRFBO);
             swapBuffers(quarterResReadIndex);
 
@@ -1043,8 +1020,8 @@ int main(){
             swapBuffers(quarterResReadIndex);
 
             glUseProgram(blurShaderProgram);
-            glUniform1f(glGetUniformLocation(blurShaderProgram, "strideX"), 2.0f / screenW);
-            glUniform1f(glGetUniformLocation(blurShaderProgram, "strideY"), 2.0f / screenH);
+            glUniform1f(glGetUniformLocation(blurShaderProgram, "strideX"), 2.0f / windowW);
+            glUniform1f(glGetUniformLocation(blurShaderProgram, "strideY"), 2.0f / windowH);
 
             for (auto horizontal : {0, 1}){
                 glUniform1i(glGetUniformLocation(blurShaderProgram, "bHorizontal"), horizontal);
@@ -1054,7 +1031,7 @@ int main(){
             }
 
             glBindFramebuffer(GL_FRAMEBUFFER, PPFBO);
-            glViewport(0, 0, screenW, screenH);
+            glViewport(0, 0, windowW, windowH);
             glUseProgram(bloomCombineShaderProgram);
             glBindTexture(GL_TEXTURE_2D, fullResPPTextures[fullResReadIndex]);
             glActiveTexture(GL_TEXTURE1);
@@ -1071,7 +1048,7 @@ int main(){
             swapBuffers(fullResReadIndex);
         }
         glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
-        glBlitFramebuffer(0, 0, screenW, screenH, 0, 0, screenW, screenH, GL_COLOR_BUFFER_BIT, GL_LINEAR);
+        glBlitFramebuffer(0, 0, windowW, windowH, 0, 0, windowW, windowH, GL_COLOR_BUFFER_BIT, GL_LINEAR);
 
         if (bShowMag){
             glUseProgram(screenRectShaderProgram);
@@ -1091,11 +1068,7 @@ int main(){
         previousTime = currentTime;
     }
 
-    CameraManager::setActiveCamera(nullptr);
-    CameraManager::setActiveWindow(nullptr);
-
-    glfwDestroyWindow(window);
-    glfwTerminate();
+    CameraManager::terminate();
 
     return 0;
 }

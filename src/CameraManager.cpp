@@ -41,6 +41,10 @@ bool resizeFrameBufferAttachment(GLenum attachment, int newWidth, int newHeight)
         return false;
     glGetFramebufferAttachmentParameteriv(GL_FRAMEBUFFER, attachment,
                                           GL_FRAMEBUFFER_ATTACHMENT_OBJECT_NAME, &boundObjectName);
+    auto [viewportW, viewportH] = CameraManager::getViewportSize();
+    float aspectRationW = 1.0f,
+          aspectRationH = 1.0f;
+    int currentWidth, currentHeight;
     if (boundObjectType == GL_TEXTURE){
         GLint currentTexture = 0;
         GLint currentTextureMultisample = 0;
@@ -68,6 +72,13 @@ bool resizeFrameBufferAttachment(GLenum attachment, int newWidth, int newHeight)
         }
         GLint boundTextureFormat = GL_RGB;
         glGetTexLevelParameteriv(bindTarget, 0, GL_TEXTURE_INTERNAL_FORMAT, &boundTextureFormat);
+        glGetTexLevelParameteriv(bindTarget, 0, GL_TEXTURE_WIDTH, &currentWidth);
+        glGetTexLevelParameteriv(bindTarget, 0, GL_TEXTURE_HEIGHT, &currentHeight);
+        aspectRationW = static_cast<float>(currentWidth) / viewportW;
+        aspectRationH = static_cast<float>(currentHeight) / viewportH;
+        newWidth *= aspectRationW;
+        newHeight *= aspectRationH;
+
         if (bindTarget == GL_TEXTURE_2D){
             glTexImage2D(GL_TEXTURE_2D, 0, boundTextureFormat, newWidth, newHeight, 0, GL_RGB, GL_UNSIGNED_BYTE, nullptr);
         }
@@ -93,6 +104,12 @@ bool resizeFrameBufferAttachment(GLenum attachment, int newWidth, int newHeight)
         glGetRenderbufferParameteriv(GL_RENDERBUFFER, GL_RENDERBUFFER_SAMPLES, &boundRenderBufferSamples);
         GLint boundRenderBufferFormat = GL_DEPTH24_STENCIL8;
         glGetRenderbufferParameteriv(GL_RENDERBUFFER, GL_RENDERBUFFER_INTERNAL_FORMAT, &boundRenderBufferFormat);
+        glGetRenderbufferParameteriv(GL_RENDERBUFFER, GL_RENDERBUFFER_WIDTH, &currentWidth);
+        glGetRenderbufferParameteriv(GL_RENDERBUFFER, GL_RENDERBUFFER_HEIGHT, &currentHeight);
+        aspectRationW = static_cast<float>(currentWidth) / viewportW;
+        aspectRationH = static_cast<float>(currentHeight) / viewportH;
+        newWidth *= aspectRationW;
+        newHeight *= aspectRationH;
         if (boundRenderBufferSamples > 1){
             glRenderbufferStorageMultisample(GL_RENDERBUFFER, boundRenderBufferSamples, boundRenderBufferFormat, newWidth, newHeight);
         }
@@ -107,8 +124,6 @@ bool resizeFrameBufferAttachment(GLenum attachment, int newWidth, int newHeight)
 void CameraManager::setViewportSize(int width, int height){
     CameraManager::aspectRatio = static_cast<float>(width) / static_cast<float>(height);
     CameraManager::setVerticalFOV(CameraManager::verticalFOV);
-    CameraManager::viewportW = width;
-    CameraManager::viewportH = height;
 
     if (currentWindow){
         glViewport(0, 0, width, height);
@@ -129,6 +144,8 @@ void CameraManager::setViewportSize(int width, int height){
         }
     }
     glBindFramebuffer(GL_FRAMEBUFFER, currentFrameBuffer);
+    CameraManager::viewportW = width;
+    CameraManager::viewportH = height;
 
     CameraManager::bStartup = true;
 }

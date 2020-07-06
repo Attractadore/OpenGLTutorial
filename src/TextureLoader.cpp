@@ -5,33 +5,27 @@
 #include <algorithm>
 
 std::filesystem::path TextureLoader::textureRoot = "assets/textures/";
-std::unordered_map<std::string, GLuint> TextureLoader::textureMap;
+std::unordered_map<std::string, GLuint> TextureLoader::texture2DMap;
+std::unordered_map<std::vector<std::string>, GLuint, boost::hash<std::vector<std::string>>> TextureLoader::textureCubeMapMap;
 
-GLuint TextureLoader::getTextureId(const std::filesystem::path &textureName){
+GLuint TextureLoader::getTextureId2D(const std::filesystem::path &textureName){
     std::filesystem::path joinedPath = TextureLoader::textureRoot.string() + textureName.string();
     if (!std::filesystem::exists(joinedPath)){
         return 0;
     }
     std::string textureKey = std::filesystem::canonical(joinedPath);
-    if (!TextureLoader::textureMap.count(textureKey)){
-        TextureLoader::loadTexture(textureKey);
+    if (!TextureLoader::texture2DMap.count(textureKey)){
+        TextureLoader::loadTexture2D(textureKey);
     }
-    return TextureLoader::textureMap[textureKey];
+    return TextureLoader::texture2DMap[textureKey];
 }
 
-void TextureLoader::freeTexture(const std::filesystem::path &textureName){
+void TextureLoader::freeTexture2D(const std::filesystem::path &textureName){
     std::string textureKey = std::filesystem::canonical(TextureLoader::textureRoot.string() + textureName.string());
-    if (TextureLoader::textureMap.count(textureKey)){
-        glDeleteTextures(1, &TextureLoader::textureMap[textureKey]);
-        TextureLoader::textureMap.erase(textureKey);
+    if (TextureLoader::texture2DMap.count(textureKey)){
+        glDeleteTextures(1, &TextureLoader::texture2DMap[textureKey]);
+        TextureLoader::texture2DMap.erase(textureKey);
     }
-}
-
-void TextureLoader::freeTextures(){
-    std::vector<GLuint> textureIds(textureMap.size());
-    std::transform(textureMap.begin(), textureMap.end(), textureIds.begin(), [] (std::pair<std::string, GLuint> p){return p.second;});
-    glDeleteTextures(textureIds.size(), textureIds.data());
-    TextureLoader::textureMap.clear();
 }
 
 void TextureLoader::setTextureRoot(const std::filesystem::path &newTextureRoot){
@@ -41,7 +35,22 @@ void TextureLoader::setTextureRoot(const std::filesystem::path &newTextureRoot){
     TextureLoader::textureRoot = newTextureRoot;
 }
 
-void TextureLoader::loadTexture(const std::string& textureKey){
+std::vector<std::byte> getImageData(const std::string& src, int& width, int& height){
+    ILuint loadedImage;
+    ilGenImages(1, &loadedImage);
+    ilBindImage(loadedImage);
+    ilLoadImage(src.c_str());
+    width = ilGetInteger(IL_IMAGE_WIDTH);
+    height = ilGetInteger(IL_IMAGE_HEIGHT);
+    std::vector<std::byte> imageData(width * height * 4);
+    ilCopyPixels(0, 0, 0, width, height, 1, IL_RGBA, IL_UNSIGNED_BYTE, imageData.data());
+    ilDeleteImage(loadedImage);
+    return imageData;
+}
+
+void TextureLoader::loadTexture2D(const std::string& textureKey){
+    GLint currentBoundTexture = 0;
+    glGetIntegerv(GL_TEXTURE_BINDING_2D, &currentBoundTexture);
     GLuint textureId;
     glGenTextures(1, &textureId);
     glBindTexture(GL_TEXTURE_2D, textureId);
@@ -49,17 +58,33 @@ void TextureLoader::loadTexture(const std::string& textureKey){
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
-    ILuint loadedImage;
-    ilGenImages(1, &loadedImage);
-    ilBindImage(loadedImage);
-    ilLoadImage(textureKey.c_str());
-    int width = ilGetInteger(IL_IMAGE_WIDTH);
-    int height = ilGetInteger(IL_IMAGE_HEIGHT);
-    std::vector<std::byte> imageData(width * height * 4);
-    ilCopyPixels(0, 0, 0, width, height, 1, IL_RGBA, IL_UNSIGNED_BYTE, imageData.data());
+    int width, height;
+    auto imageData = getImageData(textureKey, width, height);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, imageData.data());
     glGenerateMipmap(GL_TEXTURE_2D);
-    ilDeleteImage(loadedImage);
-    TextureLoader::textureMap[textureKey] = textureId;
+    TextureLoader::texture2DMap[textureKey] = textureId;
+    glBindTexture(GL_TEXTURE_2D, currentBoundTexture);
+}
+
+void TextureLoader::loadTextureCubeMap(const std::vector<std::string>& textureKey){
+    GLint currentBoundTexture = 0;
+    glGetIntegerv(GL_TEXTURE_BINDING_CUBE_MAP, &currentBoundTexture);
+    GLuint textureId;
+    glGenTextures(1, &textureId);
+    glBindTexture(GL_TEXTURE_CUBE_MAP, textureId);
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+    for (int i = 0; i < 6; i++){
+        int width, height;
+        auto imageData = getImageData(textureKey[i], width, height);
+        glTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + i, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, imageData.data());
+    }
+    glGenerateMipmap(GL_TEXTURE_CUBE_MAP);
+    TextureLoader::textureCubeMapMap[textureKey] = textureId;
+    glBindTexture(GL_TEXTURE_CUBE_MAP, currentBoundTexture);
+
 }
 

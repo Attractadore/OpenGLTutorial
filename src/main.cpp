@@ -108,9 +108,9 @@ void setupRenderRect(GLuint VAO, GLuint VBO, GLuint EBO) {
 
 void setShaderMatrial(GLuint shaderProgram, const Material& material){
     glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, TextureLoader::getTextureId(material.diffuseMap));
+    glBindTexture(GL_TEXTURE_2D, TextureLoader::getTextureId2D(material.diffuseMap));
     glActiveTexture(GL_TEXTURE1);
-    glBindTexture(GL_TEXTURE_2D, TextureLoader::getTextureId(material.specularMap));
+    glBindTexture(GL_TEXTURE_2D, TextureLoader::getTextureId2D(material.specularMap));
     glUniform1f(glGetUniformLocation(shaderProgram, "material.shininess"), material.shininess);
 }
 
@@ -316,7 +316,6 @@ void swapBuffers(int& readBufferIndex){
 }
 
 int main(){
-    std::string windowTitle = "OpenGL Tutorial";
     float horizontalFOV = 90.0f;
     int windowW, windowH;
     float windowAspectRatio = 16.0f / 9.0f;
@@ -367,7 +366,7 @@ int main(){
                            spotLightMatrices,
                            directionalLightMatrices;
 
-    glm::mat4 floorModel = glm::translate(glm::mat4(1.0f), {0.0f, 0.0f, -1.0f}),
+    glm::mat4 floorModel = glm::translate(glm::mat4(1.0f), {0.0f, 0.0f, -1.01f}),
               floorNormal(1.0f);
 
     calculatePyramidMatrices(numCubesX, numCubesY, cubeDistanceX, cubeDistanceY, pyramidMatrices);
@@ -378,6 +377,14 @@ int main(){
 
     Material windowMaterial = { "window.png", "window_specular.png", 64.0f },
              grassMaterial = { "grass.png", "grass_specular.png", 16.0f };
+    std::vector<std::filesystem::path> cubeMapFaceTextures = {
+        "skybox/front.png",
+        "skybox/back.png",
+        "skybox/right.png",
+        "skybox/left.png",
+        "skybox/top.png",
+        "skybox/bottom.png"
+    };
 
     std::vector<std::tuple<glm::mat4, glm::mat3, Material>> transparentObjects;
     float windowRectDW = numCubesX * cubeDistanceX / 2.0f + 2.0f,
@@ -385,7 +392,7 @@ int main(){
     setupWindows(transparentObjects, windowRectDW, windowRectDH, windowMaterial);
     setupGrass(transparentObjects, windowRectDW, windowRectDH, grassMaterial);
 
-    glm::vec3 cameraStartPos = {5.0f, 5.0f, 3.0f},
+    glm::vec3 cameraStartPos = {-5.0f, 0.0f, 3.0f},
               cameraStartLookDirection = -cameraStartPos;
 
     auto camera = std::make_shared<Camera>(cameraStartPos, cameraStartLookDirection, glm::vec3(0.0f, 0.0f, 1.0f));
@@ -397,7 +404,8 @@ int main(){
             bloomExtractShaderProgram,
             bloomCombineShaderProgram,
             screenRectShaderProgram,
-            blurShaderProgram;
+            blurShaderProgram,
+            cubeMapShaderProgram;
     GLuint frameTextureArray;
     std::vector<GLuint> fullResPPTextures(2),
                         quarterResPPTextures(2);
@@ -405,7 +413,7 @@ int main(){
         fullResReadIndex = 0,
         quarterResReadIndex = 0;
 
-    std::vector<GLuint> vertexBuffers(9);
+    std::vector<GLuint> vertexBuffers(10);
 
     GLuint& cubeVBO = vertexBuffers[0];
     GLuint& pyramidVBO = vertexBuffers[1];
@@ -416,8 +424,9 @@ int main(){
     GLuint& screenRectVBO = vertexBuffers[6];
     GLuint& magRectVBO = vertexBuffers[7];
     GLuint& transparentVBO = vertexBuffers[8];
+    GLuint& skyboxVBO = vertexBuffers[9];
 
-    std::vector<GLuint> elementBuffers(8);
+    std::vector<GLuint> elementBuffers(9);
 
     GLuint& cubeEBO = elementBuffers[0];
     GLuint& pyramidEBO = elementBuffers[1];
@@ -427,6 +436,7 @@ int main(){
     GLuint& squarePlaneEBO = elementBuffers[5];
     GLuint& screenRectEBO = elementBuffers[6];
     GLuint& transparentEBO = elementBuffers[7];
+    GLuint& skyboxEBO = elementBuffers[8];
 
     std::vector<GLuint> uniformBuffers(2);
     GLuint& matrixUBO = uniformBuffers[0];
@@ -443,7 +453,7 @@ int main(){
     GLuint& MSDepthStencilRenderBuffer = renderBuffers[1];
     GLuint& blitDepthStencilRenderBuffer = renderBuffers[2];
 
-    std::vector<GLuint> vertexArrays(9);
+    std::vector<GLuint> vertexArrays(10);
 
     GLuint& cubeVAO = vertexArrays[0];
     GLuint& pyramidVAO = vertexArrays[1];
@@ -454,6 +464,7 @@ int main(){
     GLuint& screenRectVAO = vertexArrays[6];
     GLuint& magRectVAO = vertexArrays[7];
     GLuint& transparentVAO = vertexArrays[8];
+    GLuint& skyboxVAO = vertexArrays[9];
 
     constexpr std::array<GLfloat, 16> screenRectVertexData = {
         -1.0f, -1.0f, 0.0f, 0.0f,
@@ -492,6 +503,32 @@ int main(){
         6, 7, 4
     };
 
+    constexpr std::array<GLfloat, 24> skyboxVertexData = {
+        -1.0f, -1.0f, -1.0f,
+         1.0f, -1.0f, -1.0f,
+         1.0f,  1.0f, -1.0f,
+        -1.0f,  1.0f, -1.0f,
+        -1.0f, -1.0f,  1.0f,
+         1.0f, -1.0f,  1.0f,
+         1.0f,  1.0f,  1.0f,
+        -1.0f,  1.0f,  1.0f
+    };
+
+    constexpr std::array<GLuint, 36> skyboxVertexIndices = {
+        1, 2, 0,
+        2, 3, 0,
+        6, 5, 4,
+        7, 6, 4,
+        6, 2, 1,
+        5, 6, 1,
+        3, 7, 0,
+        7, 4, 0,
+        4, 5, 1,
+        4, 1, 0,
+        7, 3, 2,
+        6, 7, 2
+    };
+
     CameraManager::initialize(windowW, windowH);
     CameraManager::setHorizontalFOV(horizontalFOV);
     CameraManager::currentCamera = camera;
@@ -507,8 +544,9 @@ int main(){
     if (glIsEnabled(GL_DEBUG_OUTPUT)){
         glDebugMessageCallback(debugFunction, nullptr);
     }
+    glEnable(GL_TEXTURE_CUBE_MAP_SEAMLESS);
     glEnable(GL_DEPTH_TEST);
-    glEnable(GL_BLEND);
+    glDepthFunc(GL_LEQUAL);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
     // Setup rendering textures
@@ -593,6 +631,8 @@ int main(){
       auto bloomExtractFragmentShaderSource = loadShaderSource("assets/shaders/bloomextract.frag");
       auto bloomCombineFragmentShaderSource = loadShaderSource("assets/shaders/bloomcombine.frag");
       auto blurFragmentShaderSource = loadShaderSource("assets/shaders/blur.frag");
+      auto cubeMapVertexShaderSource = loadShaderSource("assets/shaders/cube.vert");
+      auto cubeMapFragmentShaderSource = loadShaderSource("assets/shaders/cube.frag");
 
       // Create cube shader program
 
@@ -609,6 +649,14 @@ int main(){
       lampShaderProgram = createProgram({lampVertexShader, lampFragmentShader});
       glDeleteShader(lampVertexShader);
       glDeleteShader(lampFragmentShader);
+
+      GLuint cubeMapVertexShader = createShader(GL_VERTEX_SHADER, cubeMapVertexShaderSource);
+      GLuint cubeMapFragmentShader = createShader(GL_FRAGMENT_SHADER, cubeMapFragmentShaderSource);
+      cubeMapShaderProgram = createProgram({cubeMapVertexShader, cubeMapFragmentShader});
+      glDeleteShader(cubeMapVertexShader);
+      glDeleteShader(cubeMapFragmentShader);
+
+      // Create screen rect shader program
 
       GLuint screenRectVertexShader = createShader(GL_VERTEX_SHADER, screenRectVertexShaderSource);
       GLuint screenRectFragmentShader = createShader(GL_FRAGMENT_SHADER, screenRectFragmentShaderSource);
@@ -666,6 +714,7 @@ int main(){
     storeData(screenRectVertexData, rectVertexIndices, screenRectVBO, screenRectEBO);
     storeData(magRectVertexData, rectVertexIndices, magRectVBO, 0);
     storeData(transparantObjectVertexData, transparentObjectVertexIndices, transparentVBO, transparentEBO);
+    storeData(skyboxVertexData, skyboxVertexIndices, skyboxVBO, skyboxEBO);
 
     // Setup VAOs
 
@@ -679,13 +728,18 @@ int main(){
     setupRenderRect(screenRectVAO, screenRectVBO, screenRectEBO);
     setupRenderRect(magRectVAO, magRectVBO, screenRectEBO);
     setupModel(transparentVAO, transparentVBO, transparentEBO);
+    glBindVertexArray(skyboxVAO);
+    glBindBuffer(GL_ARRAY_BUFFER, skyboxVBO);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, skyboxEBO);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof (decltype(skyboxVertexData)::value_type), nullptr);
+    glEnableVertexAttribArray(0);
 
     // Set floor texture wrapping parameters
 
-    glBindTexture(GL_TEXTURE_2D, TextureLoader::getTextureId(circularPlaneMaterial.diffuseMap));
+    glBindTexture(GL_TEXTURE_2D, TextureLoader::getTextureId2D(circularPlaneMaterial.diffuseMap));
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-    glBindTexture(GL_TEXTURE_2D, TextureLoader::getTextureId(circularPlaneMaterial.specularMap));
+    glBindTexture(GL_TEXTURE_2D, TextureLoader::getTextureId2D(circularPlaneMaterial.specularMap));
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
 
@@ -756,6 +810,9 @@ int main(){
 
     glUseProgram(blurShaderProgram);
     glUniform1i(glGetUniformLocation(blurShaderProgram, "inputFrame"), 0);
+
+    glUseProgram(cubeMapShaderProgram);
+    glUniform1i(glGetUniformLocation(cubeMapShaderProgram, "cubeMap"), 0);
 
     float forwardAxisValue, rightAxisValue, upAxisValue;
 
@@ -948,7 +1005,21 @@ int main(){
 
         glEnable(GL_CULL_FACE);
 
+        // Draw skybox
+
+        view = glm::mat4(glm::mat3(view));
+
+        glUseProgram(cubeMapShaderProgram);
+        glUniformMatrix4fv(glGetUniformLocation(cubeMapShaderProgram, "view"), 1, GL_FALSE, glm::value_ptr(view));
+        glUniformMatrix4fv(glGetUniformLocation(cubeMapShaderProgram, "projection"), 1, GL_FALSE, glm::value_ptr(projection));
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_CUBE_MAP, TextureLoader::getTextureIdCubeMap(cubeMapFaceTextures));
+        glBindVertexArray(skyboxVAO);
+        glDrawElements(GL_TRIANGLES, skyboxVertexIndices.size(), GL_UNSIGNED_INT, nullptr);
+
         // Draw transparent objects
+
+        glEnable(GL_BLEND);
 
         glUseProgram(cubeShaderProgram);
 
@@ -967,6 +1038,8 @@ int main(){
             glBindVertexArray(transparentVAO);
             glDrawElements(GL_TRIANGLES, transparentObjectVertexIndices.size(), GL_UNSIGNED_INT, nullptr);
         }
+
+        glDisable(GL_BLEND);
 
         // Blit MSAA framebuffer
 

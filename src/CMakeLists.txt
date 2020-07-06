@@ -5,6 +5,7 @@ find_package(glfw3 REQUIRED)
 find_package(DevIL REQUIRED)
 find_package(glm REQUIRED)
 find_package(assimp REQUIRED)
+find_package(Boost REQUIRED)
 add_executable("Tutorial" "main.cpp" "glad.c" "Camera.cpp" "CameraManager.cpp" "Lights.cpp" "RandomSampler.cpp" "TextureLoader.cpp")
 
 target_include_directories(${PROJECT_NAME} PRIVATE
@@ -14,7 +15,8 @@ target_include_directories(${PROJECT_NAME} PRIVATE
                      ${FMT_INCLUDE_DIRS}
                      ${IL_INCLUDE_DIRS}
                      ${GLM_INCLUDE_DIRS}
-                     ${ASSIMP_INCLUDE_DIRS})
+                     ${ASSIMP_INCLUDE_DIRS}
+                     ${BOOST_INCLUDE_DIRS})
 target_link_libraries(${PROJECT_NAME}
                       ${OPENGL_LIBRARIES}
                       ${IL_LIBRARIES}

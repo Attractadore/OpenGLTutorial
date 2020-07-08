@@ -31,9 +31,9 @@ struct MeshData{
     Material meshMaterial;
 };
 
-void debugFunction(GLenum source​, GLenum type​, GLuint id​, GLenum severity​, GLsizei length​, const GLchar* message​, const void* userParam​){
-    if (severity​ != GL_DEBUG_SEVERITY_NOTIFICATION){
-        std::printf("%s\n", message​);
+void debugFunction(GLenum, GLenum, GLuint, GLenum severity, GLsizei, const GLchar* message, const void*){
+    if (severity != GL_DEBUG_SEVERITY_NOTIFICATION){
+        std::printf("%s\n", message);
     }
 }
 

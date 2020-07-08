@@ -8,6 +8,10 @@ find_package(assimp REQUIRED)
 find_package(Boost REQUIRED)
 add_executable("Tutorial" "main.cpp" "glad.c" "Camera.cpp" "CameraManager.cpp" "Lights.cpp" "RandomSampler.cpp" "TextureLoader.cpp")
 
+if (${CMAKE_CXX_COMPILER_ID} STREQUAL "GNU" OR ${CMAKE_CXX_COMPILER_ID} STREQUAL "Clang")
+    target_compile_options(${PROJECT_NAME} PRIVATE -Wall -Wextra)
+endif()
+
 target_include_directories(${PROJECT_NAME} PRIVATE
                     "${PROJECT_SOURCE_DIR}/../include/"
                      ${OPENGL_INCLUDE_DIRS}
@@ -21,5 +25,7 @@ target_link_libraries(${PROJECT_NAME}
                       ${OPENGL_LIBRARIES}
                       ${IL_LIBRARIES}
                       assimp
-                      glfw
-                      dl)
+                      glfw)
+if(${CMAKE_SYSTEM_NAME} STREQUAL "Linux")
+    target_link_libraries(${PROJECT_NAME} dl)
+endif()

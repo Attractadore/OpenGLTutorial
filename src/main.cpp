@@ -348,6 +348,7 @@ int main(){
          bBloom = true,
          bTAA = false,
          bMSAA = true,
+         bSkybox = true,
          bShowMag = false;
     float bloomIntencity = 5.0f;
     int TAASamples = 4;
@@ -856,6 +857,12 @@ int main(){
         if (glfwGetKey(window, GLFW_KEY_8) == GLFW_PRESS){
             bBloom = true;
         }
+        if (glfwGetKey(window, GLFW_KEY_9) == GLFW_PRESS){
+            bSkybox = false;
+        }
+        if (glfwGetKey(window, GLFW_KEY_0) == GLFW_PRESS){
+            bSkybox = true;
+        }
         if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS){
             CameraManager::disableCameraLook();
         }
@@ -1007,15 +1014,16 @@ int main(){
 
         // Draw skybox
 
-        view = glm::mat4(glm::mat3(view));
-
-        glUseProgram(cubeMapShaderProgram);
-        glUniformMatrix4fv(glGetUniformLocation(cubeMapShaderProgram, "view"), 1, GL_FALSE, glm::value_ptr(view));
-        glUniformMatrix4fv(glGetUniformLocation(cubeMapShaderProgram, "projection"), 1, GL_FALSE, glm::value_ptr(projection));
-        glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_CUBE_MAP, TextureLoader::getTextureIdCubeMap(cubeMapFaceTextures));
-        glBindVertexArray(skyboxVAO);
-        glDrawElements(GL_TRIANGLES, skyboxVertexIndices.size(), GL_UNSIGNED_INT, nullptr);
+        if (bSkybox){
+            view = glm::mat4(glm::mat3(view));
+            glUseProgram(cubeMapShaderProgram);
+            glUniformMatrix4fv(glGetUniformLocation(cubeMapShaderProgram, "view"), 1, GL_FALSE, glm::value_ptr(view));
+            glUniformMatrix4fv(glGetUniformLocation(cubeMapShaderProgram, "projection"), 1, GL_FALSE, glm::value_ptr(projection));
+            glActiveTexture(GL_TEXTURE0);
+            glBindTexture(GL_TEXTURE_CUBE_MAP, TextureLoader::getTextureIdCubeMap(cubeMapFaceTextures));
+            glBindVertexArray(skyboxVAO);
+            glDrawElements(GL_TRIANGLES, skyboxVertexIndices.size(), GL_UNSIGNED_INT, nullptr);
+        }
 
         // Draw transparent objects
 

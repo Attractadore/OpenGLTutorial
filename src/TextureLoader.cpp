@@ -1,6 +1,7 @@
 #include "TextureLoader.hpp"
 
-#include <IL/il.h>
+#include <png.h>
+
 #include <algorithm>
 
 std::filesystem::path TextureLoader::textureRoot = "assets/textures/";
@@ -54,15 +55,16 @@ void TextureLoader::setTextureRoot(const std::filesystem::path &newTextureRoot){
 }
 
 std::vector<std::byte> getImageData(const std::string& src, int& width, int& height){
-    ILuint loadedImage;
-    ilGenImages(1, &loadedImage);
-    ilBindImage(loadedImage);
-    ilLoadImage(src.c_str());
-    width = ilGetInteger(IL_IMAGE_WIDTH);
-    height = ilGetInteger(IL_IMAGE_HEIGHT);
-    std::vector<std::byte> imageData(width * height * 4);
-    ilCopyPixels(0, 0, 0, width, height, 1, IL_RGBA, IL_UNSIGNED_BYTE, imageData.data());
-    ilDeleteImage(loadedImage);
+    png_image loadedImage;
+    std::memset(&loadedImage, 0, sizeof(loadedImage));
+    loadedImage.version = PNG_IMAGE_VERSION;
+    png_image_begin_read_from_file(&loadedImage, src.c_str());
+    loadedImage.format = PNG_FORMAT_RGBA;
+    width = loadedImage.width;
+    height = loadedImage.height;
+    int pixelBytes = PNG_IMAGE_SIZE(loadedImage) / width / height;
+    std::vector<std::byte> imageData(pixelBytes * width * height);
+    png_image_finish_read(&loadedImage, nullptr, imageData.data(), -PNG_IMAGE_ROW_STRIDE(loadedImage), nullptr);
     return imageData;
 }
 

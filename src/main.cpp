@@ -8,7 +8,6 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
 #include <GLFW/glfw3.h>
-#include <IL/il.h>
 #include <assimp/Importer.hpp>
 #include <assimp/scene.h>
 #include <assimp/postprocess.h>
@@ -539,10 +538,6 @@ int main(){
     CameraManager::currentCamera = camera;
     CameraManager::enableCameraLook();
     gladLoadGLLoader((GLADloadproc)glfwGetProcAddress);
-
-    ilInit();
-    ilEnable(IL_ORIGIN_SET);
-    ilOriginFunc(IL_ORIGIN_LOWER_LEFT);
 
     glEnable(GL_DEBUG_OUTPUT);
     glEnable(GL_DEBUG_OUTPUT_SYNCHRONOUS);

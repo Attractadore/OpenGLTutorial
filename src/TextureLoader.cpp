@@ -60,11 +60,10 @@ std::vector<std::byte> getImageData(const std::string& src, int& width, int& hei
     loadedImage.version = PNG_IMAGE_VERSION;
     png_image_begin_read_from_file(&loadedImage, src.c_str());
     loadedImage.format = PNG_FORMAT_RGBA;
+    std::vector<std::byte> imageData(PNG_IMAGE_SIZE(loadedImage));
+    png_image_finish_read(&loadedImage, nullptr, imageData.data(), -PNG_IMAGE_ROW_STRIDE(loadedImage), nullptr);
     width = loadedImage.width;
     height = loadedImage.height;
-    int pixelBytes = PNG_IMAGE_SIZE(loadedImage) / width / height;
-    std::vector<std::byte> imageData(pixelBytes * width * height);
-    png_image_finish_read(&loadedImage, nullptr, imageData.data(), -PNG_IMAGE_ROW_STRIDE(loadedImage), nullptr);
     return imageData;
 }
 

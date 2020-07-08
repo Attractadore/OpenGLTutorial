@@ -25,6 +25,10 @@ bool operator==(const Material& m1, const Material& m2){
     return m1.diffuseMap == m2.diffuseMap and m1.specularMap == m2.specularMap and m1.shininess == m2.shininess;
 }
 
+bool operator!=(const Material& m1, const Material& m2){
+    return m1.diffuseMap != m2.diffuseMap or m1.specularMap != m2.specularMap or m1.shininess != m2.shininess;
+}
+
 struct MeshData{
     std::vector<GLfloat> vertexData;
     std::vector<GLuint> vertexIndices;
@@ -124,7 +128,10 @@ void setLampUniforms(GLuint shaderProgram, const glm::mat4& model, const glm::ve
     glUniform3fv(glGetUniformLocation(shaderProgram, "lightColor"), 1, glm::value_ptr(lightColor));
 }
 
-std::vector<MeshData> loadModelData(std::filesystem::path modelPath){
+std::vector<MeshData> loadModelData(const std::string& modelPath){
+    if (!std::filesystem::exists(modelPath)){
+        return {};
+    }
     Assimp::Importer importer;
     const aiScene* scene = importer.ReadFile(modelPath.c_str(), aiProcess_JoinIdenticalVertices | aiProcess_Triangulate);
     if (!scene){
@@ -135,8 +142,6 @@ std::vector<MeshData> loadModelData(std::filesystem::path modelPath){
         MeshData newMeshData;
         auto mesh = scene->mMeshes[i];
         auto meshMaterial = scene->mMaterials[mesh->mMaterialIndex];
-        newMeshData.vertexData.reserve(8 * mesh->mNumVertices);
-        newMeshData.vertexIndices.reserve(3 * mesh->mNumFaces);
         for (int j = 0; j < mesh->mNumVertices; j++){
             newMeshData.vertexData.push_back(mesh->mVertices[j].x);
             newMeshData.vertexData.push_back(mesh->mVertices[j].y);
@@ -377,7 +382,7 @@ int main(){
 
     Material windowMaterial = { "window.png", "window_specular.png", 64.0f },
              grassMaterial = { "grass.png", "grass_specular.png", 16.0f };
-    std::vector<std::filesystem::path> cubeMapFaceTextures = {
+    std::vector<std::string> cubeMapFaceTextures = {
         "skybox/front.png",
         "skybox/back.png",
         "skybox/right.png",
@@ -1053,7 +1058,6 @@ int main(){
 
         glDisable(GL_CULL_FACE);
         glDisable(GL_DEPTH_TEST);
-        glDisable(GL_BLEND);
 
         // Setup initial input texture
 
@@ -1131,7 +1135,6 @@ int main(){
         }
 
         glEnable(GL_DEPTH_TEST);
-        glEnable(GL_BLEND);
 
         colorIndex = (colorIndex + 1) % TAASamples;
 

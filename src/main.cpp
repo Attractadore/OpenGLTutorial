@@ -41,7 +41,7 @@ void debugFunction(GLenum, GLenum, GLuint, GLenum severity, GLsizei, const GLcha
 }
 
 std::string loadShaderSource(std::filesystem::path filePath){
-    std::ifstream is(filePath);
+    std::ifstream is(filePath, std::ios::binary);
     if (!is){
         return "";
     }

@@ -349,6 +349,7 @@ int main(){
          bTAA = false,
          bMSAA = true,
          bSkybox = true,
+         bBorder = false,
          bShowMag = false;
     float bloomIntencity = 5.0f;
     int TAASamples = 4;
@@ -398,12 +399,13 @@ int main(){
     setupGrass(transparentObjects, windowRectDW, windowRectDH, grassMaterial);
 
     glm::vec3 cameraStartPos = {-5.0f, 0.0f, 3.0f},
-              cameraStartLookDirection = -cameraStartPos;
+            cameraStartLookDirection = {1.0f, 0.0f, 0.0f};
 
     auto camera = std::make_shared<Camera>(cameraStartPos, cameraStartLookDirection, glm::vec3(0.0f, 0.0f, 1.0f));
 
     GLuint cubeShaderProgram,
             lampShaderProgram,
+            lampBorderShaderProgram,
             TAAShaderProgram,
             greyscaleShaderProgram,
             bloomExtractShaderProgram,
@@ -548,6 +550,7 @@ int main(){
     glEnable(GL_TEXTURE_CUBE_MAP_SEAMLESS);
     glEnable(GL_DEPTH_TEST);
     glDepthFunc(GL_LEQUAL);
+    glStencilOp(GL_KEEP, GL_KEEP, GL_REPLACE);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
     // Setup rendering textures
@@ -592,7 +595,7 @@ int main(){
     glBindRenderbuffer(GL_RENDERBUFFER, MSDepthStencilRenderBuffer);
     glRenderbufferStorageMultisample(GL_RENDERBUFFER, MSAASamples, GL_DEPTH24_STENCIL8, windowW, windowH);
     glBindRenderbuffer(GL_RENDERBUFFER, blitDepthStencilRenderBuffer);
-    glRenderbufferStorageMultisample(GL_RENDERBUFFER, 0, GL_DEPTH24_STENCIL8, windowW, windowH);
+    glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, windowW, windowH);
 
     // Setup framebuffers
 
@@ -628,6 +631,7 @@ int main(){
       auto cubeFragmentShaderSource = loadShaderSource("assets/shaders/triangle.frag");
       auto lampVertexShaderSource = loadShaderSource("assets/shaders/lamp.vert");
       auto lampFragmentShaderSource = loadShaderSource("assets/shaders/lamp.frag");
+      auto lampBorderFragmentShaderSource = loadShaderSource("assets/shaders/lampborder.frag");
       auto screenRectVertexShaderSource = loadShaderSource("assets/shaders/screenrect.vert");
       auto screenRectFragmentShaderSource = loadShaderSource("assets/shaders/screenrect.frag");
       auto TAAFragmentShaderSource = loadShaderSource("assets/shaders/taa.frag");
@@ -646,13 +650,20 @@ int main(){
       glDeleteShader(cubeVertexShader);
       glDeleteShader(cubeFragmentShader);
 
-      // Create lamp shader program
+      // Create lamp shader programs
 
       GLuint lampVertexShader = createShader(GL_VERTEX_SHADER, lampVertexShaderSource);
       GLuint lampFragmentShader = createShader(GL_FRAGMENT_SHADER, lampFragmentShaderSource);
       lampShaderProgram = createProgram({lampVertexShader, lampFragmentShader});
-      glDeleteShader(lampVertexShader);
       glDeleteShader(lampFragmentShader);
+
+      GLuint lampBorderFragmentShader = createShader(GL_FRAGMENT_SHADER, lampBorderFragmentShaderSource);
+      lampBorderShaderProgram = createProgram({lampVertexShader, lampBorderFragmentShader});
+      glDeleteShader(lampBorderFragmentShader);
+
+      glDeleteShader(lampVertexShader);
+
+      // Cube map shader program
 
       GLuint cubeMapVertexShader = createShader(GL_VERTEX_SHADER, cubeMapVertexShaderSource);
       GLuint cubeMapFragmentShader = createShader(GL_FRAGMENT_SHADER, cubeMapFragmentShaderSource);
@@ -866,6 +877,12 @@ int main(){
         if (glfwGetKey(window, GLFW_KEY_0) == GLFW_PRESS){
             bSkybox = true;
         }
+        if (glfwGetKey(window, GLFW_KEY_LEFT_BRACKET) == GLFW_PRESS){
+            bBorder = false;
+        }
+        if (glfwGetKey(window, GLFW_KEY_RIGHT_BRACKET) == GLFW_PRESS){
+            bBorder = true;
+        }
         if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS){
             CameraManager::disableCameraLook();
         }
@@ -943,7 +960,7 @@ int main(){
             glBindFramebuffer(GL_FRAMEBUFFER, MSFBO);
         }
         glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
-        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
 
         glBindBuffer(GL_UNIFORM_BUFFER, matrixUBO);
         glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(glm::mat4), glm::value_ptr(projection));
@@ -991,6 +1008,11 @@ int main(){
 
         // Draw lamps
 
+        if (bBorder) {
+            glEnable(GL_STENCIL_TEST);
+            glStencilFunc(GL_ALWAYS, 1, 0xFF);
+        }
+
         glUseProgram(lampShaderProgram);
 
         for (int i = 0; i < numPointLights; i++){
@@ -1014,6 +1036,42 @@ int main(){
         }
 
         glEnable(GL_CULL_FACE);
+
+        // Draw lamp borders
+
+        if (bBorder){
+            glStencilFunc(GL_GREATER, 1, 0xFF);
+            glStencilMask(0x00);
+
+            glm::mat4 silhoutte = glm::scale(glm::mat4(1.0f), 1.05f * glm::vec3(1.0f));
+            glUseProgram(lampBorderShaderProgram);
+
+            for (int i = 0; i < numPointLights; i++){
+                setLampUniforms(lampBorderShaderProgram, pointLightMatrices[i] * silhoutte, pointLights[i].diffuse);
+                glBindVertexArray(pointLightVAO);
+                glDrawElements(GL_TRIANGLES, sphereVertexIndices.size(), GL_UNSIGNED_INT, nullptr);
+            }
+
+            for (int i = 0; i < numSpotLights - 1; i++){
+                setLampUniforms(lampBorderShaderProgram, spotLightMatrices[i] * silhoutte, spotLights[i].diffuse);
+                glBindVertexArray(spotLightVAO);
+                glDrawElements(GL_TRIANGLES, coneVertexIndices.size(), GL_UNSIGNED_INT, nullptr);
+            }
+
+            glDisable(GL_CULL_FACE);
+
+            for (int i = 0; i < numDirectionalLights; i++){
+                setLampUniforms(lampBorderShaderProgram, directionalLightMatrices[i] * silhoutte, directionalLights[i].diffuse);
+                glBindVertexArray(directionalLightVAO);
+                glDrawElements(GL_TRIANGLES, squarePlaneVertexIndices.size(), GL_UNSIGNED_INT, nullptr);
+            }
+
+            glEnable(GL_CULL_FACE);
+
+            glDisable(GL_STENCIL_TEST);
+            glStencilFunc(GL_ALWAYS, 0, 0xFF);
+            glStencilMask(0xFF);
+        }
 
         // Draw skybox
 

@@ -351,7 +351,7 @@ int main(){
          bSkybox = true,
          bBorder = false,
          bShowMag = false;
-    float bloomIntencity = 5.0f;
+    float bloomIntencity = 16.0f;
     int TAASamples = 4;
     std::vector<glm::vec3> TAASamplesPositions = {
         {-0.25f, -0.25f, 0.0f},

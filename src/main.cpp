@@ -583,6 +583,9 @@ int main(){
 
     // Setup renderbuffers
 
+    int maxSamples;
+    glGetIntegerv(GL_MAX_SAMPLES, &maxSamples);
+    MSAASamples = std::min(MSAASamples, maxSamples);
     glGenRenderbuffers(renderBuffers.size(), renderBuffers.data());
     glBindRenderbuffer(GL_RENDERBUFFER, MSColorRenderBuffer);
     glRenderbufferStorageMultisample(GL_RENDERBUFFER, MSAASamples, GL_RGBA, windowW, windowH);

@@ -404,6 +404,7 @@ int main(){
     auto camera = std::make_shared<Camera>(cameraStartPos, cameraStartLookDirection, glm::vec3(0.0f, 0.0f, 1.0f));
 
     GLuint cubeShaderProgram,
+            cubeNormalShaderProgram,
             lampShaderProgram,
             lampBorderShaderProgram,
             TAAShaderProgram,
@@ -629,6 +630,9 @@ int main(){
     {
       auto cubeVertexShaderSource = loadShaderSource("assets/shaders/triangle.vert");
       auto cubeFragmentShaderSource = loadShaderSource("assets/shaders/triangle.frag");
+      auto cubeNormalVertexShaderSource = loadShaderSource("assets/shaders/trianglenormals.vert");
+      auto cubeNormalGeometryShaderSource = loadShaderSource("assets/shaders/trianglenormals.geom");
+      auto cubeNormalFragmentShaderSource = loadShaderSource("assets/shaders/trianglenormals.frag");
       auto lampVertexShaderSource = loadShaderSource("assets/shaders/lamp.vert");
       auto lampFragmentShaderSource = loadShaderSource("assets/shaders/lamp.frag");
       auto lampBorderFragmentShaderSource = loadShaderSource("assets/shaders/lampborder.frag");
@@ -647,8 +651,14 @@ int main(){
       GLuint cubeVertexShader = createShader(GL_VERTEX_SHADER, cubeVertexShaderSource);
       GLuint cubeFragmentShader = createShader(GL_FRAGMENT_SHADER, cubeFragmentShaderSource);
       cubeShaderProgram = createProgram({cubeVertexShader, cubeFragmentShader});
+      GLuint cubeNormalVertexShader = createShader(GL_VERTEX_SHADER, cubeNormalVertexShaderSource);
+      GLuint cubeNormalGeometryShader = createShader(GL_GEOMETRY_SHADER, cubeNormalGeometryShaderSource);
+      GLuint cubeNormalFragmentShader = createShader(GL_FRAGMENT_SHADER, cubeNormalFragmentShaderSource);
+      cubeNormalShaderProgram = createProgram({cubeNormalVertexShader, cubeNormalGeometryShader, cubeNormalFragmentShader});
       glDeleteShader(cubeVertexShader);
       glDeleteShader(cubeFragmentShader);
+      glDeleteShader(cubeNormalGeometryShader);
+      glDeleteShader(cubeNormalFragmentShader);
 
       // Create lamp shader programs
 
@@ -804,6 +814,11 @@ int main(){
     glUniformBlockBinding(cubeShaderProgram, glGetUniformBlockIndex(cubeShaderProgram, "LightsBlock"), 1);
     glUniform1i(glGetUniformLocation(cubeShaderProgram, "material.diffuse"), 0);
     glUniform1i(glGetUniformLocation(cubeShaderProgram, "material.specular"), 1);
+
+    glUseProgram(cubeNormalShaderProgram);
+    glUniformBlockBinding(cubeNormalShaderProgram, glGetUniformBlockIndex(cubeNormalShaderProgram, "MatrixBlock"), 0);
+    glUniform1f(glGetUniformLocation(cubeNormalShaderProgram, "normalScale"), 0.2f);
+    glUniform3fv(glGetUniformLocation(cubeNormalShaderProgram, "normalColor"), 1, glm::value_ptr(glm::vec3(1.0f, 1.0f, 0.0f)));
 
     glUseProgram(lampShaderProgram);
     glUniformBlockBinding(lampShaderProgram, glGetUniformBlockIndex(lampShaderProgram, "MatrixBlock"), 0);

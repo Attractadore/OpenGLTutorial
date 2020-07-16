@@ -4,6 +4,7 @@
 #include "CameraManager.hpp"
 #include "Lights.hpp"
 #include "TextureLoader.hpp"
+#include "RandomSampler.hpp"
 
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
@@ -313,6 +314,23 @@ void setupGrass(S& grass, float distX, float distY, const Material& grassMateria
     }
 }
 
+void setupSnowData(GLuint snowPosVBO, GLuint snowDirVBO, int numSnowParticles, float xSpan, float ySpan, float zStart, float zFloor){
+    std::vector<GLfloat> particlesStartingPositions,
+                       particlesFallVectors;
+    for (int i = 0; i < numSnowParticles; i++){
+        particlesStartingPositions.push_back(RandomSampler::randomFloat(-xSpan, xSpan));
+        particlesStartingPositions.push_back(RandomSampler::randomFloat(-ySpan, ySpan));
+        particlesStartingPositions.push_back(zStart);
+        particlesFallVectors.push_back(0.0f);
+        particlesFallVectors.push_back(0.0f);
+        particlesFallVectors.push_back(zFloor - zStart);
+    }
+    glBindBuffer(GL_ARRAY_BUFFER, snowPosVBO);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(decltype(particlesStartingPositions)::value_type) * particlesStartingPositions.size(), particlesStartingPositions.data(), GL_STATIC_DRAW);
+    glBindBuffer(GL_ARRAY_BUFFER, snowDirVBO);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(decltype(particlesFallVectors)::value_type) * particlesFallVectors.size(), particlesFallVectors.data(), GL_STATIC_DRAW);
+}
+
 void swapBuffers(int& readBufferIndex){
     readBufferIndex = !readBufferIndex;
     glReadBuffer(GL_COLOR_ATTACHMENT0 + readBufferIndex);
@@ -350,6 +368,7 @@ int main(){
          bMSAA = true,
          bSkybox = true,
          bBorder = false,
+         bSnow = true,
          bShowMag = false;
     float bloomIntencity = 16.0f;
     int TAASamples = 4;
@@ -368,6 +387,10 @@ int main(){
 
     std::vector<std::pair<glm::mat4, glm::mat3>> pyramidMatrices,
                                                  cubeMatrices;
+
+    int numSnowParticles = 10'000;
+    glm::mat4 snowParticleModel = glm::scale(glm::mat4(1.0f), 0.02f * glm::vec3(1.0f));
+
     std::vector<glm::mat4> pointLightMatrices,
                            spotLightMatrices,
                            directionalLightMatrices;
@@ -413,7 +436,8 @@ int main(){
             bloomCombineShaderProgram,
             screenRectShaderProgram,
             blurShaderProgram,
-            cubeMapShaderProgram;
+            cubeMapShaderProgram,
+            snowShaderProgram;
     GLuint frameTextureArray;
     std::vector<GLuint> fullResPPTextures(2),
                         quarterResPPTextures(2);
@@ -421,7 +445,7 @@ int main(){
         fullResReadIndex = 0,
         quarterResReadIndex = 0;
 
-    std::vector<GLuint> vertexBuffers(10);
+    std::vector<GLuint> vertexBuffers(12);
 
     GLuint& cubeVBO = vertexBuffers[0];
     GLuint& pyramidVBO = vertexBuffers[1];
@@ -433,6 +457,8 @@ int main(){
     GLuint& magRectVBO = vertexBuffers[7];
     GLuint& transparentVBO = vertexBuffers[8];
     GLuint& skyboxVBO = vertexBuffers[9];
+    GLuint& snowPosVBO = vertexBuffers[10];
+    GLuint& snowDirVBO = vertexBuffers[11];
 
     std::vector<GLuint> elementBuffers(9);
 
@@ -461,7 +487,7 @@ int main(){
     GLuint& MSDepthStencilRenderBuffer = renderBuffers[1];
     GLuint& blitDepthStencilRenderBuffer = renderBuffers[2];
 
-    std::vector<GLuint> vertexArrays(10);
+    std::vector<GLuint> vertexArrays(11);
 
     GLuint& cubeVAO = vertexArrays[0];
     GLuint& pyramidVAO = vertexArrays[1];
@@ -473,6 +499,7 @@ int main(){
     GLuint& magRectVAO = vertexArrays[7];
     GLuint& transparentVAO = vertexArrays[8];
     GLuint& skyboxVAO = vertexArrays[9];
+    GLuint& snowVAO = vertexArrays[10];
 
     constexpr std::array<GLfloat, 16> screenRectVertexData = {
         -1.0f, -1.0f, 0.0f, 0.0f,
@@ -645,6 +672,8 @@ int main(){
       auto blurFragmentShaderSource = loadShaderSource("assets/shaders/blur.frag");
       auto cubeMapVertexShaderSource = loadShaderSource("assets/shaders/cube.vert");
       auto cubeMapFragmentShaderSource = loadShaderSource("assets/shaders/cube.frag");
+      auto snowVertexShaderSource = loadShaderSource("assets/shaders/snow.vert");
+      auto snowFragmentShaderSource = loadShaderSource("assets/shaders/snow.frag");
 
       // Create cube shader program
 
@@ -717,6 +746,14 @@ int main(){
       glDeleteShader(blurFragmentShader);
 
       glDeleteShader(screenRectVertexShader);
+
+      // Create snow shader program
+
+      GLuint snowVertexShader = createShader(GL_VERTEX_SHADER, snowVertexShaderSource);
+      GLuint snowFragmentShader = createShader(GL_FRAGMENT_SHADER, snowFragmentShaderSource);
+      snowShaderProgram = createProgram({snowVertexShader, snowFragmentShader});
+      glDeleteShader(snowVertexShader);
+      glDeleteShader(snowFragmentShader);
     }
 
     auto [cubeVertexData, cubeVertexIndices, cubeMaterial] = loadModelData("assets/meshes/cube.obj")[0];
@@ -740,6 +777,7 @@ int main(){
     storeData(magRectVertexData, rectVertexIndices, magRectVBO, 0);
     storeData(transparantObjectVertexData, transparentObjectVertexIndices, transparentVBO, transparentEBO);
     storeData(skyboxVertexData, skyboxVertexIndices, skyboxVBO, skyboxEBO);
+    setupSnowData(snowPosVBO, snowDirVBO, numSnowParticles, 30.0, 30.0f, 20.0f, -1.0f);
 
     // Setup VAOs
 
@@ -758,6 +796,22 @@ int main(){
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, skyboxEBO);
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof (decltype(skyboxVertexData)::value_type), nullptr);
     glEnableVertexAttribArray(0);
+
+    glBindVertexArray(snowVAO);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, sphereEBO);
+    glBindBuffer(GL_ARRAY_BUFFER, sphereVBO);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 8 * sizeof (GLfloat), nullptr);
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 8 * sizeof (GLfloat), nullptr);
+    glBindBuffer(GL_ARRAY_BUFFER, snowPosVBO);
+    glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, 3 * sizeof (GLfloat), nullptr);
+    glBindBuffer(GL_ARRAY_BUFFER, snowDirVBO);
+    glVertexAttribPointer(3, 3, GL_FLOAT, GL_FALSE, 3 * sizeof (GLfloat), nullptr);
+    glVertexAttribDivisor(2, 1);
+    glVertexAttribDivisor(3, 1);
+    glEnableVertexAttribArray(0);
+    glEnableVertexAttribArray(1);
+    glEnableVertexAttribArray(2);
+    glEnableVertexAttribArray(3);
 
     // Set floor texture wrapping parameters
 
@@ -844,6 +898,15 @@ int main(){
     glUseProgram(cubeMapShaderProgram);
     glUniform1i(glGetUniformLocation(cubeMapShaderProgram, "cubeMap"), 0);
 
+    glUseProgram(snowShaderProgram);
+    glUniformBlockBinding(snowShaderProgram, glGetUniformBlockIndex(snowShaderProgram, "MatrixBlock"), 0);
+    glUniformBlockBinding(snowShaderProgram, glGetUniformBlockIndex(snowShaderProgram, "LightsBlock"), 1);
+    glUniformMatrix4fv(glGetUniformLocation(snowShaderProgram, "model"), 1, GL_FALSE, glm::value_ptr(snowParticleModel));
+    glUniform1f(glGetUniformLocation(snowShaderProgram, "freq"), 0.1f);
+    glUniform3fv(glGetUniformLocation(snowShaderProgram, "snowDiffuse"), 1, glm::value_ptr(glm::vec3(1.0f)));
+    glUniform3fv(glGetUniformLocation(snowShaderProgram, "snowDiffuse"), 1, glm::value_ptr(glm::vec3(1.0f)));
+    glUniform1f(glGetUniformLocation(snowShaderProgram, "snowShininess"), 16.0f);
+
     float forwardAxisValue, rightAxisValue, upAxisValue;
 
     float previousTime = 0.0f;
@@ -897,6 +960,12 @@ int main(){
         }
         if (glfwGetKey(window, GLFW_KEY_RIGHT_BRACKET) == GLFW_PRESS){
             bBorder = true;
+        }
+        if (glfwGetKey(window, GLFW_KEY_O) == GLFW_PRESS){
+            bSnow = false;
+        }
+        if (glfwGetKey(window, GLFW_KEY_P) == GLFW_PRESS){
+            bSnow = true;
         }
         if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS){
             CameraManager::disableCameraLook();
@@ -1086,6 +1155,16 @@ int main(){
             glDisable(GL_STENCIL_TEST);
             glStencilFunc(GL_ALWAYS, 0, 0xFF);
             glStencilMask(0xFF);
+        }
+
+        // Draw snow
+
+        if (bSnow){
+            glUseProgram(snowShaderProgram);
+            glUniform1f(glGetUniformLocation(snowShaderProgram, "time"), glfwGetTime());
+            glUniform3fv(glGetUniformLocation(snowShaderProgram, "cameraPos"), 1, glm::value_ptr(camera->getCameraPos()));
+            glBindVertexArray(snowVAO);
+            glDrawElementsInstanced(GL_TRIANGLES, sphereVertexIndices.size(), GL_UNSIGNED_INT, nullptr, numSnowParticles);
         }
 
         // Draw skybox

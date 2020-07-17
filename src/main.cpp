@@ -80,10 +80,12 @@ GLuint createProgram(const std::vector<GLuint>& shaders) {
 
 template <typename S1, typename S2>
 void storeData(const S1& vertexData, const S2& vertexIndices, GLuint VBO, GLuint EBO) {
+    static_assert(std::is_same_v<typename S1::value_type, GLfloat>);
+    static_assert(std::is_same_v<typename S2::value_type, GLuint>);
     glBindBuffer(GL_ARRAY_BUFFER, VBO);
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(typename S1::value_type) * vertexData.size(), vertexData.data(), GL_STATIC_DRAW);
-    glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(typename S2::value_type) * vertexIndices.size(), vertexIndices.data(), GL_STATIC_DRAW);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(GLfloat) * vertexData.size(), vertexData.data(), GL_STATIC_DRAW);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(GLuint) * vertexIndices.size(), vertexIndices.data(), GL_STATIC_DRAW);
 }
 
 void setupModel(GLuint VAO, GLuint VBO, GLuint EBO) {
@@ -91,8 +93,8 @@ void setupModel(GLuint VAO, GLuint VBO, GLuint EBO) {
     glBindBuffer(GL_ARRAY_BUFFER, VBO);
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(GLfloat), nullptr);
-    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(GLfloat), (void*) (3 * sizeof(GLfloat)));
-    glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(GLfloat), (void*) (6 * sizeof(GLfloat)));
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(GLfloat), reinterpret_cast<void*>(3 * sizeof(GLfloat)));
+    glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(GLfloat), reinterpret_cast<void*>(6 * sizeof(GLfloat)));
     glEnableVertexAttribArray(0);
     glEnableVertexAttribArray(1);
     glEnableVertexAttribArray(2);
@@ -111,7 +113,7 @@ void setupRenderRect(GLuint VAO, GLuint VBO, GLuint EBO) {
     glBindBuffer(GL_ARRAY_BUFFER, VBO);
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
     glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(GLfloat), nullptr);
-    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(GLfloat), (void*) (2 * sizeof(GLfloat)));
+    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(GLfloat), reinterpret_cast<void*>(2 * sizeof(GLfloat)));
     glEnableVertexAttribArray(0);
     glEnableVertexAttribArray(1);
 }
@@ -144,11 +146,11 @@ std::vector<MeshData> loadModelData(const std::string& modelPath) {
         return {};
     }
     std::vector<MeshData> meshes;
-    for (int i = 0; i < scene->mNumMeshes; i++) {
+    for (std::size_t i = 0; i < scene->mNumMeshes; i++) {
         MeshData newMeshData;
         auto mesh = scene->mMeshes[i];
         auto meshMaterial = scene->mMaterials[mesh->mMaterialIndex];
-        for (int j = 0; j < mesh->mNumVertices; j++) {
+        for (std::size_t j = 0; j < mesh->mNumVertices; j++) {
             newMeshData.vertexData.push_back(mesh->mVertices[j].x);
             newMeshData.vertexData.push_back(mesh->mVertices[j].y);
             newMeshData.vertexData.push_back(mesh->mVertices[j].z);
@@ -169,9 +171,9 @@ std::vector<MeshData> loadModelData(const std::string& modelPath) {
                 newMeshData.vertexData.push_back(0.0f);
             }
         }
-        for (int j = 0; j < mesh->mNumFaces; j++) {
+        for (std::size_t j = 0; j < mesh->mNumFaces; j++) {
             auto face = mesh->mFaces[j];
-            for (int k = 0; k < face.mNumIndices; k++) {
+            for (std::size_t k = 0; k < face.mNumIndices; k++) {
                 newMeshData.vertexIndices.push_back(face.mIndices[k]);
             }
         }
@@ -187,38 +189,32 @@ std::vector<MeshData> loadModelData(const std::string& modelPath) {
     return meshes;
 }
 
-template <typename P>
-void copyLightColor(P* dst, const LightCommon& light) {
+void copyLightColor(std::byte* dst, const LightCommon& light) {
     std::memcpy(dst + 00, glm::value_ptr(light.ambient), 12);
     std::memcpy(dst + 16, glm::value_ptr(light.diffuse), 12);
     std::memcpy(dst + 32, glm::value_ptr(light.specular), 12);
 }
 
-template <typename P>
-void copyLightAttenuation(P* dst, const PointLight& light) {
+void copyLightAttenuation(std::byte* dst, const PointLight& light) {
     std::memcpy(dst + 0, &light.kc, 4);
     std::memcpy(dst + 4, &light.kl, 4);
     std::memcpy(dst + 8, &light.kq, 4);
 }
 
-template <typename P>
-void copyLightPosition(P* dst, const PointLight& light) {
+void copyLightPosition(std::byte* dst, const PointLight& light) {
     std::memcpy(dst, glm::value_ptr(light.position), 12);
 }
 
-template <typename P>
-void copyLightDirection(P* dst, const DirectionalLight& light) {
+void copyLightDirection(std::byte* dst, const DirectionalLight& light) {
     std::memcpy(dst, glm::value_ptr(light.direction), 12);
 }
 
-template <typename P>
-void copyLightAngle(P* dst, const SpotLight& light) {
+void copyLightAngle(std::byte* dst, const SpotLight& light) {
     std::memcpy(dst + 0, &light.innerAngleCos, 4);
     std::memcpy(dst + 4, &light.outerAngleCos, 4);
 }
 
-template <typename S>
-void calculatePyramidMatrices(int w, int h, float dX, float dY, S& matrices) {
+void calculatePyramidMatrices(int w, int h, float dX, float dY, std::vector<std::pair<glm::mat4, glm::mat3>>& matrices) {
     for (int i = 0; i < w; i++) {
         for (int j = 0; j < h; j++) {
             if ((i + j) % 3) {
@@ -234,8 +230,7 @@ void calculatePyramidMatrices(int w, int h, float dX, float dY, S& matrices) {
     }
 }
 
-template <typename S>
-void calculateCubeMatrices(int w, int h, float dX, float dY, S& matrices) {
+void calculateCubeMatrices(int w, int h, float dX, float dY, std::vector<std::pair<glm::mat4, glm::mat3>>& matrices) {
     for (int i = 0; i < w; i++) {
         for (int j = 0; j < h; j++) {
             if (!((i + j) % 3)) {
@@ -250,8 +245,7 @@ void calculateCubeMatrices(int w, int h, float dX, float dY, S& matrices) {
     }
 }
 
-template <typename S1, typename S2>
-void calculatePointLightMatrices(const S1& lights, S2& matrices) {
+void calculatePointLightMatrices(const std::vector<PointLight>& lights, std::vector<glm::mat4>& matrices) {
     for (const auto& light: lights) {
         glm::mat4 model = glm::translate(glm::mat4(1.0f), light.position);
         model = glm::scale(model, 0.2f * glm::vec3(1.0f, 1.0f, 1.0f));
@@ -259,8 +253,7 @@ void calculatePointLightMatrices(const S1& lights, S2& matrices) {
     }
 }
 
-template <typename S1, typename S2>
-void calculateSpotLightMatrices(const S1& lights, S2& matrices) {
+void calculateSpotLightMatrices(const std::vector<SpotLight>& lights, std::vector<glm::mat4>& matrices) {
     for (const auto& light: lights) {
         glm::mat4 model = glm::translate(glm::mat4(1.0f), light.position);
         float angle = glm::acos(glm::dot(glm::normalize(light.direction), {0.0f, 0.0f, -1.0f}));
@@ -271,8 +264,7 @@ void calculateSpotLightMatrices(const S1& lights, S2& matrices) {
     }
 }
 
-template <typename S1, typename S2>
-void calculateDirectionalLightMatrices(const S1& lights, S2& matrices) {
+void calculateDirectionalLightMatrices(const std::vector<DirectionalLight>& lights, std::vector<glm::mat4>& matrices) {
     for (const auto& light: lights) {
         glm::mat4 model = glm::translate(glm::mat4(1.0f), {0.0f, 0.0f, 30.0f});
         float angle = glm::acos(glm::dot(glm::normalize(light.direction), {0.0f, 0.0f, -1.0f}));
@@ -282,8 +274,7 @@ void calculateDirectionalLightMatrices(const S1& lights, S2& matrices) {
     }
 }
 
-template <typename S>
-void setupWindows(S& windows, float distX, float distY, const Material& windowMaterial) {
+void setupWindows(std::vector<std::tuple<glm::mat4, glm::mat3, Material>>& windows, float distX, float distY, const Material& windowMaterial) {
     constexpr std::array<glm::vec3, 4> points = {
         glm::vec3{-1.0f, 1.0f, 0.0f},
         glm::vec3{1.0f, 1.0f, 0.0f},
@@ -313,8 +304,7 @@ void setupWindows(S& windows, float distX, float distY, const Material& windowMa
     }
 }
 
-template <typename S>
-void setupGrass(S& grass, float distX, float distY, const Material& grassMaterial) {
+void setupGrass(std::vector<std::tuple<glm::mat4, glm::mat3, Material>>& grass, float distX, float distY, const Material& grassMaterial) {
     float radius = std::sqrt(distX * distX + distY * distY) + 1.0f;
     int numGrassTufts = std::floor(glm::radians(360.0f) * radius);
     float angleStep = glm::radians(360.0f) / numGrassTufts;
@@ -341,9 +331,9 @@ void setupSnowData(GLuint snowPosVBO, GLuint snowDirVBO, int numSnowParticles, f
         particlesFallVectors.push_back(zFloor - zStart);
     }
     glBindBuffer(GL_ARRAY_BUFFER, snowPosVBO);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(decltype(particlesStartingPositions)::value_type) * particlesStartingPositions.size(), particlesStartingPositions.data(), GL_STATIC_DRAW);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(GLfloat) * particlesStartingPositions.size(), particlesStartingPositions.data(), GL_STATIC_DRAW);
     glBindBuffer(GL_ARRAY_BUFFER, snowDirVBO);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(decltype(particlesFallVectors)::value_type) * particlesFallVectors.size(), particlesFallVectors.data(), GL_STATIC_DRAW);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(GLfloat) * particlesFallVectors.size(), particlesFallVectors.data(), GL_STATIC_DRAW);
 }
 
 void swapBuffers(int& readBufferIndex) {
@@ -532,7 +522,7 @@ int main() {
     CameraManager::setHorizontalFOV(horizontalFOV);
     CameraManager::currentCamera = camera;
     CameraManager::enableCameraLook();
-    gladLoadGLLoader((GLADloadproc) glfwGetProcAddress);
+    gladLoadGLLoader(reinterpret_cast<GLADloadproc>(glfwGetProcAddress));
 
     glEnable(GL_DEBUG_OUTPUT);
     glEnable(GL_DEBUG_OUTPUT_SYNCHRONOUS);
@@ -794,14 +784,14 @@ int main() {
     glBufferData(GL_UNIFORM_BUFFER, 2576, nullptr, GL_DYNAMIC_DRAW);
     std::vector<std::byte> bufferData(2576);
     auto bufferPointer = bufferData.data();
-    for (int i = 0; i < pointLights.size(); i++) {
+    for (std::size_t i = 0; i < pointLights.size(); i++) {
         int offset = 80 * i;
         const auto& light = pointLights[i];
         copyLightColor(bufferPointer + offset, light);
         copyLightAttenuation(bufferPointer + offset + 48, light);
         copyLightPosition(bufferPointer + offset + 64, light);
     }
-    for (int i = 0; i < spotLights.size(); i++) {
+    for (std::size_t i = 0; i < spotLights.size(); i++) {
         int offset = 80 * MAX_POINT_LIGHTS + 112 * i;
         const auto& light = spotLights[i];
         copyLightColor(bufferPointer + offset, light);
@@ -810,7 +800,7 @@ int main() {
         copyLightDirection(bufferPointer + offset + 80, light);
         copyLightAngle(bufferPointer + offset + 92, light);
     }
-    for (int i = 0; i < directionalLights.size(); i++) {
+    for (std::size_t i = 0; i < directionalLights.size(); i++) {
         int offset = 80 * MAX_POINT_LIGHTS + 112 * MAX_SPOT_LIGHTS + 64 * i;
         const auto& light = directionalLights[i];
         copyLightColor(bufferPointer + offset, light);

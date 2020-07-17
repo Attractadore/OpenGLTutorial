@@ -52,14 +52,14 @@ float lightAngleAtt(float angle, float inner, float outer) {
 }
 
 vec3 generalLighting(LightColor color, vec3 fragNormal, vec3 lightDir, vec3 cameraDir, MaterialColor fragMaterial) {
-    vec3 reflectDir = reflect(-lightDir, fragNormal);
+    vec3 halfwayDir = normalize(lightDir + cameraDir);
 
     vec3 ambientLighting = color.ambient * fragMaterial.diffuseColor;
 
     float diffuseStrength = max(dot(lightDir, fragNormal), 0.0f);
     vec3 diffuseLighting = color.diffuse * diffuseStrength * fragMaterial.diffuseColor;
 
-    float specularStrength = pow(max(dot(reflectDir, cameraDir), 0.0f), fragMaterial.shininess);
+    float specularStrength = pow(max(dot(halfwayDir, fragNormal), 0.0f), fragMaterial.shininess);
     vec3 specularLighting = color.specular * specularStrength * fragMaterial.specularColor;
 
     return ambientLighting + diffuseLighting + specularLighting;

@@ -170,7 +170,7 @@ std::vector<MeshData> loadModelData(const std::string& modelPath){
         meshMaterial->GetTexture(aiTextureType_SPECULAR, 0, &specularTexture);
         newMeshData.meshMaterial.diffuseMap = diffuseTexture.C_Str();
         newMeshData.meshMaterial.specularMap = specularTexture.C_Str();
-        newMeshData.meshMaterial.shininess = 32.0f;
+        newMeshData.meshMaterial.shininess = 128.0f;
         meshes.push_back(std::move(newMeshData));
     }
     return meshes;
@@ -410,8 +410,8 @@ int main(){
     calculateSpotLightMatrices(spotLights, spotLightMatrices);
     calculateDirectionalLightMatrices(directionalLights, directionalLightMatrices);
 
-    Material windowMaterial = { "window.png", "window_specular.png", 64.0f },
-             grassMaterial = { "grass.png", "grass_specular.png", 16.0f };
+    Material windowMaterial = { "window.png", "window_specular.png", 256.0f },
+             grassMaterial = { "grass.png", "grass_specular.png", 64.0f };
     std::vector<std::string> cubeMapFaceTextures = {
         "skybox/front.png",
         "skybox/back.png",
@@ -911,7 +911,7 @@ int main(){
     glUniform1f(glGetUniformLocation(snowShaderProgram, "freq"), 0.1f);
     glUniform3fv(glGetUniformLocation(snowShaderProgram, "snowDiffuse"), 1, glm::value_ptr(glm::vec3(1.0f)));
     glUniform3fv(glGetUniformLocation(snowShaderProgram, "snowDiffuse"), 1, glm::value_ptr(glm::vec3(1.0f)));
-    glUniform1f(glGetUniformLocation(snowShaderProgram, "snowShininess"), 16.0f);
+    glUniform1f(glGetUniformLocation(snowShaderProgram, "snowShininess"), 64.0f);
 
     float forwardAxisValue, rightAxisValue, upAxisValue;
 

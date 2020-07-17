@@ -152,11 +152,24 @@ std::vector<MeshData> loadModelData(const std::string& modelPath){
             newMeshData.vertexData.push_back(mesh->mVertices[j].x);
             newMeshData.vertexData.push_back(mesh->mVertices[j].y);
             newMeshData.vertexData.push_back(mesh->mVertices[j].z);
-            newMeshData.vertexData.push_back(mesh->mNormals[j].x);
-            newMeshData.vertexData.push_back(mesh->mNormals[j].y);
-            newMeshData.vertexData.push_back(mesh->mNormals[j].z);
-            newMeshData.vertexData.push_back(mesh->mTextureCoords[0][j].x);
-            newMeshData.vertexData.push_back(mesh->mTextureCoords[0][j].y);
+            if (mesh->HasNormals()){
+                newMeshData.vertexData.push_back(mesh->mNormals[j].x);
+                newMeshData.vertexData.push_back(mesh->mNormals[j].y);
+                newMeshData.vertexData.push_back(mesh->mNormals[j].z);
+            }
+            else {
+                newMeshData.vertexData.push_back(0.0f);
+                newMeshData.vertexData.push_back(0.0f);
+                newMeshData.vertexData.push_back(0.0f);
+            }
+            if (mesh->HasTextureCoords(0)){
+                newMeshData.vertexData.push_back(mesh->mTextureCoords[0][j].x);
+                newMeshData.vertexData.push_back(mesh->mTextureCoords[0][j].y);
+            }
+            else {
+                newMeshData.vertexData.push_back(0.0f);
+                newMeshData.vertexData.push_back(0.0f);
+            }
         }
         for (int j = 0; j < mesh->mNumFaces; j++){
             auto face = mesh->mFaces[j];
@@ -526,50 +539,6 @@ int main(){
         2, 3, 0
     };
 
-    constexpr std::array<GLfloat, 64> transparantObjectVertexData = {
-        1.0f, 0.0f, 1.0f, 0.0f, -1.0f, 0.0f, 1.0f, 1.0f,
-        1.0f, 0.0f,-1.0f, 0.0f, -1.0f, 0.0f, 1.0f, 0.0f,
-       -1.0f, 0.0f,-1.0f, 0.0f, -1.0f, 0.0f, 0.0f, 0.0f,
-       -1.0f, 0.0f, 1.0f, 0.0f, -1.0f, 0.0f, 0.0f, 1.0f,
-        1.0f, 0.0f, 1.0f, 0.0f,  1.0f, 0.0f, 1.0f, 1.0f,
-        1.0f, 0.0f,-1.0f, 0.0f,  1.0f, 0.0f, 1.0f, 0.0f,
-       -1.0f, 0.0f,-1.0f, 0.0f,  1.0f, 0.0f, 0.0f, 0.0f,
-       -1.0f, 0.0f, 1.0f, 0.0f,  1.0f, 0.0f, 0.0f, 1.0f,
-    };
-
-    constexpr std::array<GLuint, 12> transparentObjectVertexIndices = {
-        0, 3, 2,
-        2, 1, 0,
-        4, 5, 6,
-        6, 7, 4
-    };
-
-    constexpr std::array<GLfloat, 24> skyboxVertexData = {
-        -1.0f, -1.0f, -1.0f,
-         1.0f, -1.0f, -1.0f,
-         1.0f,  1.0f, -1.0f,
-        -1.0f,  1.0f, -1.0f,
-        -1.0f, -1.0f,  1.0f,
-         1.0f, -1.0f,  1.0f,
-         1.0f,  1.0f,  1.0f,
-        -1.0f,  1.0f,  1.0f
-    };
-
-    constexpr std::array<GLuint, 36> skyboxVertexIndices = {
-        1, 2, 0,
-        2, 3, 0,
-        6, 5, 4,
-        7, 6, 4,
-        6, 2, 1,
-        5, 6, 1,
-        3, 7, 0,
-        7, 4, 0,
-        4, 5, 1,
-        4, 1, 0,
-        7, 3, 2,
-        6, 7, 2
-    };
-
     CameraManager::initialize(windowW, windowH);
     CameraManager::setHorizontalFOV(horizontalFOV);
     CameraManager::currentCamera = camera;
@@ -768,6 +737,8 @@ int main(){
     auto [coneVertexData, coneVertexIndices, coneMaterial] = loadModelData("assets/meshes/cone.obj")[0];
     auto [sphereVertexData, sphereVertexIndices, sphereMaterial] = loadModelData("assets/meshes/sphere.obj")[0];
     auto [squarePlaneVertexData, squarePlaneVertexIndices, squarePlaneMaterial] = loadModelData("assets/meshes/squareplane.obj")[0];
+    auto [skyboxVertexData, skyboxVertexIndices, skyboxMaterial] = loadModelData("assets/meshes/skybox.obj")[0];
+    auto [transparentObjectVertexData, transparentObjectVertexIndices, transparentObjectMaterial] = loadModelData("assets/meshes/transparentplane.obj")[0];
 
     // Setup data
 
@@ -781,7 +752,7 @@ int main(){
     storeData(squarePlaneVertexData, squarePlaneVertexIndices, squarePlaneVBO, squarePlaneEBO);
     storeData(screenRectVertexData, rectVertexIndices, screenRectVBO, screenRectEBO);
     storeData(magRectVertexData, rectVertexIndices, magRectVBO, 0);
-    storeData(transparantObjectVertexData, transparentObjectVertexIndices, transparentVBO, transparentEBO);
+    storeData(transparentObjectVertexData, transparentObjectVertexIndices, transparentVBO, transparentEBO);
     storeData(skyboxVertexData, skyboxVertexIndices, skyboxVBO, skyboxEBO);
     setupSnowData(snowPosVBO, snowDirVBO, numSnowParticles, 30.0, 30.0f, 20.0f, -1.0f);
 
@@ -797,11 +768,7 @@ int main(){
     setupRenderRect(screenRectVAO, screenRectVBO, screenRectEBO);
     setupRenderRect(magRectVAO, magRectVBO, screenRectEBO);
     setupModel(transparentVAO, transparentVBO, transparentEBO);
-    glBindVertexArray(skyboxVAO);
-    glBindBuffer(GL_ARRAY_BUFFER, skyboxVBO);
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, skyboxEBO);
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof (decltype(skyboxVertexData)::value_type), nullptr);
-    glEnableVertexAttribArray(0);
+    setupLamp(skyboxVAO, skyboxVBO, skyboxEBO);
 
     glBindVertexArray(snowVAO);
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, sphereEBO);
@@ -1176,6 +1143,7 @@ int main(){
         // Draw skybox
 
         if (bSkybox){
+            glCullFace(GL_FRONT);
             view = glm::mat4(glm::mat3(view));
             glUseProgram(cubeMapShaderProgram);
             glUniformMatrix4fv(glGetUniformLocation(cubeMapShaderProgram, "view"), 1, GL_FALSE, glm::value_ptr(view));
@@ -1184,6 +1152,7 @@ int main(){
             glBindTexture(GL_TEXTURE_CUBE_MAP, TextureLoader::getTextureIdCubeMap(cubeMapFaceTextures));
             glBindVertexArray(skyboxVAO);
             glDrawElements(GL_TRIANGLES, skyboxVertexIndices.size(), GL_UNSIGNED_INT, nullptr);
+            glCullFace(GL_BACK);
         }
 
         // Draw transparent objects

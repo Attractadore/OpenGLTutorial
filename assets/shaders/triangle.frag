@@ -38,7 +38,7 @@ void main() {
     }
 
     vec3 fragPos = fIn.pos;
-    vec3 fragNormal = fIn.normal;
+    vec3 fragNormal = normalize(fIn.normal);
     MaterialColor fragMaterial;
     fragMaterial.diffuseColor = texture(material.diffuseMap, fIn.tex).rgb;
     fragMaterial.specularColor = texture(material.specularMap, fIn.tex).rgb;

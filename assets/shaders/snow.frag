@@ -27,7 +27,7 @@ uniform vec3 cameraPos;
 
 void main() {
     vec3 fragPos = fIn.pos;
-    vec3 fragNormal = fIn.normal;
+    vec3 fragNormal = normalize(fIn.normal);
     MaterialColor fragMaterial;
     fragMaterial.diffuseColor = snowDiffuse;
     fragMaterial.specularColor = snowSpecular;

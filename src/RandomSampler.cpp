@@ -2,20 +2,17 @@
 
 bool RandomSampler::bSeeded = false;
 std::mt19937 RandomSampler::randomEngine;
-std::uniform_real_distribution<float> RandomSampler::randomDist;
 
 float RandomSampler::randomFloat() {
-    if (!RandomSampler::bSeeded) {
-        RandomSampler::seed();
-    }
-    return RandomSampler::randomDist(RandomSampler::randomEngine);
+    return RandomSampler::randomFloat(0.0f, 1.0f);
 }
 
 float RandomSampler::randomFloat(float a, float b) {
     if (!RandomSampler::bSeeded) {
         RandomSampler::seed();
     }
-    return RandomSampler::randomDist(RandomSampler::randomEngine) * (b - a) + a;
+    std::uniform_real_distribution dist(a, b);
+    return dist(RandomSampler::randomEngine);
 }
 
 void RandomSampler::seed() {

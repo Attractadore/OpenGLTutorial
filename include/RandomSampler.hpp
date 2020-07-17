@@ -12,5 +12,4 @@ public:
 private:
     static bool bSeeded;
     static std::mt19937 randomEngine;
-    static std::uniform_real_distribution<float> randomDist;
 };

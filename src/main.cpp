@@ -13,6 +13,7 @@
 #include <assimp/scene.h>
 #include <assimp/postprocess.h>
 
+#include <regex>
 #include <fstream>
 
 struct Material {
@@ -49,6 +50,11 @@ std::string loadShaderSource(std::filesystem::path filePath){
     auto fileSize = std::filesystem::file_size(filePath);
     std::string fileContents(fileSize, ' ');
     is.read(fileContents.data(), fileSize);
+    std::regex includeRegex(R"(#include *"(.+)\")");
+    std::smatch regex_matches;
+    while (std::regex_search(fileContents, regex_matches, includeRegex)){
+        fileContents.replace(regex_matches[0].first, regex_matches[0].second, loadShaderSource("assets/shaders/" + regex_matches[1].str()));
+    }
     return fileContents;
 }
 
@@ -866,8 +872,8 @@ int main(){
     glUseProgram(cubeShaderProgram);
     glUniformBlockBinding(cubeShaderProgram, glGetUniformBlockIndex(cubeShaderProgram, "MatrixBlock"), 0);
     glUniformBlockBinding(cubeShaderProgram, glGetUniformBlockIndex(cubeShaderProgram, "LightsBlock"), 1);
-    glUniform1i(glGetUniformLocation(cubeShaderProgram, "material.diffuse"), 0);
-    glUniform1i(glGetUniformLocation(cubeShaderProgram, "material.specular"), 1);
+    glUniform1i(glGetUniformLocation(cubeShaderProgram, "material.diffuseMap"), 0);
+    glUniform1i(glGetUniformLocation(cubeShaderProgram, "material.specularMap"), 1);
 
     glUseProgram(cubeNormalShaderProgram);
     glUniformBlockBinding(cubeNormalShaderProgram, glGetUniformBlockIndex(cubeNormalShaderProgram, "MatrixBlock"), 0);

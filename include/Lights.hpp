@@ -11,10 +11,9 @@ struct LightCommon {
     glm::vec3 ambient;
     glm::vec3 diffuse;
     glm::vec3 specular;
-
 };
 
-struct DirectionalLight : virtual LightCommon{
+struct DirectionalLight: virtual LightCommon {
     DirectionalLight();
 
     void genDirection();
@@ -22,7 +21,7 @@ struct DirectionalLight : virtual LightCommon{
     glm::vec3 direction;
 };
 
-struct PointLight : virtual LightCommon {
+struct PointLight: virtual LightCommon {
     PointLight();
 
     void genPosition();
@@ -33,7 +32,7 @@ struct PointLight : virtual LightCommon {
     float kl, kq;
 };
 
-struct SpotLight : PointLight, DirectionalLight {
+struct SpotLight: PointLight, DirectionalLight {
     SpotLight();
 
     void genCos();
@@ -41,4 +40,3 @@ struct SpotLight : PointLight, DirectionalLight {
     float innerAngleCos;
     float outerAngleCos;
 };
-

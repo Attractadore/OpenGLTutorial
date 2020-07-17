@@ -4,7 +4,7 @@
 
 #include <cstdio>
 
-Camera::Camera(glm::vec3 cameraPos, glm::vec3 cameraLookDirection, glm::vec3 worldUpDirection){
+Camera::Camera(glm::vec3 cameraPos, glm::vec3 cameraLookDirection, glm::vec3 worldUpDirection) {
     cameraLookDirection = glm::normalize(cameraLookDirection);
     worldUpDirection = glm::normalize(worldUpDirection);
     this->cameraPos = cameraPos;
@@ -19,23 +19,23 @@ Camera::Camera(glm::vec3 cameraPos, glm::vec3 cameraLookDirection, glm::vec3 wor
     this->updateCameraUpVector();
 }
 
-glm::vec3 Camera::getCameraPos(){
+glm::vec3 Camera::getCameraPos() {
     return this->cameraPos;
 }
 
-glm::vec3 Camera::getCameraForwardVector(){
+glm::vec3 Camera::getCameraForwardVector() {
     return this->cameraForwardVector;
 }
 
-glm::vec3 Camera::getCameraRightVector(){
+glm::vec3 Camera::getCameraRightVector() {
     return this->cameraRightVector;
 }
 
-glm::vec3 Camera::getCameraUpVector(){
+glm::vec3 Camera::getCameraUpVector() {
     return this->cameraUpVector;
 }
 
-void Camera::addPitch(float degrees){
+void Camera::addPitch(float degrees) {
     this->pitch += degrees;
     this->pitch = glm::clamp(this->pitch, -80.0f, 80.0f);
 
@@ -45,7 +45,7 @@ void Camera::addPitch(float degrees){
     this->updateCameraUpVector();
 }
 
-void Camera::addYaw(float degrees){
+void Camera::addYaw(float degrees) {
     this->yaw += degrees;
 
     this->yawRotationMatrix = glm::rotate(glm::mat4(1.0f), glm::radians(this->yaw), this->cameraDefaultUpVector);
@@ -55,18 +55,18 @@ void Camera::addYaw(float degrees){
     this->updateCameraUpVector();
 }
 
-void Camera::addLocationOffset(glm::vec3 offset){
+void Camera::addLocationOffset(glm::vec3 offset) {
     this->cameraPos += offset;
 }
 
-void Camera::updateCameraForwardVector(){
+void Camera::updateCameraForwardVector() {
     this->cameraForwardVector = this->yawRotationMatrix * this->pitchRotationMatrix * glm::vec4(this->cameraDefaultForwardVector, 0.0f);
 }
 
-void Camera::updateCameraRightVector(){
+void Camera::updateCameraRightVector() {
     this->cameraRightVector = this->yawRotationMatrix * glm::vec4(this->cameraDefaultRightVector, 0.0f);
 }
 
-void Camera::updateCameraUpVector(){
+void Camera::updateCameraUpVector() {
     this->cameraUpVector = this->yawRotationMatrix * this->pitchRotationMatrix * glm::vec4(this->cameraDefaultUpVector, 0.0f);
 }

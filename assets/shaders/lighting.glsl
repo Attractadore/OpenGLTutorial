@@ -3,30 +3,30 @@
 
 // Structs
 
-struct LightColor { // 48 bytes
+struct LightColor {  // 48 bytes
     vec3 ambient;
     vec3 diffuse;
     vec3 specular;
 };
 
-struct LightK { // 16 bytes
+struct LightK {  // 16 bytes
     float c;
     float l;
     float q;
 };
 
-struct PointLight { // 80 bytes
+struct PointLight {  // 80 bytes
     LightColor color;
     LightK k;
     vec3 position;
 };
 
-struct DirLight { // 64 bytes
+struct DirLight {  // 64 bytes
     LightColor color;
     vec3 direction;
 };
 
-struct SpotLight { // 112 bytes
+struct SpotLight {  // 112 bytes
     LightColor color;
     LightK k;
     vec3 position;

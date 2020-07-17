@@ -5,6 +5,6 @@ out vec4 fColor;
 
 uniform sampler2D inputFrame;
 
-void main(){
+void main() {
     fColor = texture(inputFrame, fTex);
 }

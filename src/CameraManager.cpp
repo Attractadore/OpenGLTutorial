@@ -1,8 +1,8 @@
 #include "CameraManager.hpp"
 #include "Camera.hpp"
 
-#include <glm/gtc/matrix_transform.hpp>
 #include <GLFW/glfw3.h>
+#include <glm/gtc/matrix_transform.hpp>
 
 std::weak_ptr<Camera> CameraManager::currentCamera;
 GLFWwindow* CameraManager::currentWindow = nullptr;
@@ -21,39 +21,39 @@ float CameraManager::farPlane = 100.0f;
 glm::mat4 CameraManager::view;
 glm::mat4 CameraManager::projection;
 
-void CameraManager::setHorizontalFOV(float horizontalFOV){
+void CameraManager::setHorizontalFOV(float horizontalFOV) {
     CameraManager::horizontalFOV = horizontalFOV;
     CameraManager::verticalFOV = horizontalFOV / CameraManager::aspectRatio;
     CameraManager::updateProjectionMatrix();
 }
 
-void CameraManager::setVerticalFOV(float verticalFOV){
+void CameraManager::setVerticalFOV(float verticalFOV) {
     CameraManager::horizontalFOV = verticalFOV * CameraManager::aspectRatio;
     CameraManager::verticalFOV = verticalFOV;
     CameraManager::updateProjectionMatrix();
 }
 
-void CameraManager::setNearPlane(float nearPlane){
+void CameraManager::setNearPlane(float nearPlane) {
     CameraManager::nearPlane = nearPlane;
     CameraManager::updateProjectionMatrix();
 }
 
-void CameraManager::setFarPlane(float farPlane){
+void CameraManager::setFarPlane(float farPlane) {
     CameraManager::farPlane = farPlane;
     CameraManager::updateProjectionMatrix();
 }
 
-const glm::mat4& CameraManager::getViewMatrix(){
+const glm::mat4& CameraManager::getViewMatrix() {
     CameraManager::updateViewMatrix();
     return CameraManager::view;
 }
 
-const glm::mat4& CameraManager::getProjectionMatrix(){
+const glm::mat4& CameraManager::getProjectionMatrix() {
     return CameraManager::projection;
 }
 
-void CameraManager::updateViewMatrix(){
-    if (CameraManager::currentCamera.expired()){
+void CameraManager::updateViewMatrix() {
+    if (CameraManager::currentCamera.expired()) {
         return;
     }
     auto currentCameraPointer = CameraManager::currentCamera.lock();
@@ -63,35 +63,37 @@ void CameraManager::updateViewMatrix(){
     CameraManager::view = glm::lookAt(cameraPos, cameraPos + cameraForwardVector, cameraUpVector);
 }
 
-void CameraManager::updateProjectionMatrix(){
+void CameraManager::updateProjectionMatrix() {
     CameraManager::projection = glm::perspective(glm::radians(CameraManager::verticalFOV), CameraManager::aspectRatio, CameraManager::nearPlane, CameraManager::farPlane);
 }
 
-void CameraManager::activateMouseMovementCallback(){
-    if (!CameraManager::currentWindow){
+void CameraManager::activateMouseMovementCallback() {
+    if (!CameraManager::currentWindow) {
         return;
     }
     glfwSetCursorPosCallback(CameraManager::currentWindow, CameraManager::mouseMovementCallback);
     bStartup = true;
 }
 
-void CameraManager::removeMouseMovementCallback(){
-    if (!CameraManager::currentWindow){
+void CameraManager::removeMouseMovementCallback() {
+    if (!CameraManager::currentWindow) {
         return;
     }
     glfwSetCursorPosCallback(CameraManager::currentWindow, nullptr);
 }
 
-void CameraManager::mouseMovementCallback(GLFWwindow *window, double mouseX, double mouseY){
+void CameraManager::mouseMovementCallback(GLFWwindow* window, double mouseX, double mouseY) {
     float dMouseX = mouseX - CameraManager::mouseX;
-    if (bInvertMouseX) dMouseX *= -1;
+    if (bInvertMouseX)
+        dMouseX *= -1;
     float dMouseY = mouseY - CameraManager::mouseY;
-    if (bInvertMouseY) dMouseY *= -1;
+    if (bInvertMouseY)
+        dMouseY *= -1;
 
     CameraManager::mouseX = mouseX;
     CameraManager::mouseY = mouseY;
 
-    if (bStartup){
+    if (bStartup) {
         bStartup = false;
         return;
     }
@@ -100,39 +102,39 @@ void CameraManager::mouseMovementCallback(GLFWwindow *window, double mouseX, dou
     CameraManager::addCameraPitchInput(-1.0f * dMouseY * CameraManager::mouseSensitivityY);
 }
 
-void CameraManager::addCameraYawInput(float degrees){
-    if (CameraManager::currentCamera.expired()){
+void CameraManager::addCameraYawInput(float degrees) {
+    if (CameraManager::currentCamera.expired()) {
         return;
     }
     CameraManager::currentCamera.lock()->addYaw(degrees);
     CameraManager::updateViewMatrix();
 }
 
-void CameraManager::addCameraPitchInput(float degrees){
-    if (CameraManager::currentCamera.expired()){
+void CameraManager::addCameraPitchInput(float degrees) {
+    if (CameraManager::currentCamera.expired()) {
         return;
     }
     CameraManager::currentCamera.lock()->addPitch(degrees);
     CameraManager::updateViewMatrix();
 }
 
-void CameraManager::enableCameraLook(){
-    if (!CameraManager::currentWindow){
+void CameraManager::enableCameraLook() {
+    if (!CameraManager::currentWindow) {
         return;
     }
     glfwSetInputMode(CameraManager::currentWindow, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
     CameraManager::activateMouseMovementCallback();
 }
 
-void CameraManager::disableCameraLook(){
-    if (!CameraManager::currentWindow){
+void CameraManager::disableCameraLook() {
+    if (!CameraManager::currentWindow) {
         return;
     }
     glfwSetInputMode(CameraManager::currentWindow, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
     CameraManager::removeMouseMovementCallback();
 }
 
-void CameraManager::initialize(int viewportW, int viewportH){
+void CameraManager::initialize(int viewportW, int viewportH) {
     glfwInit();
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
@@ -145,12 +147,12 @@ void CameraManager::initialize(int viewportW, int viewportH){
     CameraManager::setVerticalFOV(CameraManager::horizontalFOV / CameraManager::aspectRatio);
 }
 
-void CameraManager::terminate(){
+void CameraManager::terminate() {
     CameraManager::currentCamera.reset();
     CameraManager::currentWindow = nullptr;
     glfwTerminate();
 }
 
-GLFWwindow* CameraManager::getWindow(){
+GLFWwindow* CameraManager::getWindow() {
     return CameraManager::currentWindow;
 }

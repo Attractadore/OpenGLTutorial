@@ -6,9 +6,9 @@ out vec4 fColor;
 uniform sampler2DArray frames;
 uniform int numFrames;
 
-void main(){
+void main() {
     vec3 color = vec3(0.0f);
-    for (int i = 0; i < numFrames; i++){
+    for (int i = 0; i < numFrames; i++) {
         color += texture(frames, vec3(fTex, i)).rgb;
     }
     color /= numFrames;

@@ -8,37 +8,39 @@ std::filesystem::path TextureLoader::textureRoot = "assets/textures/";
 std::unordered_map<std::string, GLuint> TextureLoader::texture2DMap;
 std::unordered_map<std::vector<std::string>, GLuint, boost::hash<std::vector<std::string>>> TextureLoader::textureCubeMapMap;
 
-GLuint TextureLoader::getTextureId2D(const std::string &textureName){
-    if (!TextureLoader::texture2DMap.count(textureName)){
+GLuint TextureLoader::getTextureId2D(const std::string& textureName) {
+    if (!TextureLoader::texture2DMap.count(textureName)) {
         TextureLoader::loadTexture2D(textureName);
     }
     return TextureLoader::texture2DMap[textureName];
 }
 
-GLuint TextureLoader::getTextureIdCubeMap(const std::vector<std::string>& textureNames){
-    if (!TextureLoader::textureCubeMapMap.count(textureNames)){
+GLuint TextureLoader::getTextureIdCubeMap(const std::vector<std::string>& textureNames) {
+    if (!TextureLoader::textureCubeMapMap.count(textureNames)) {
         TextureLoader::loadTextureCubeMap(textureNames);
     }
     return TextureLoader::textureCubeMapMap[textureNames];
 }
 
-void TextureLoader::freeTexture2D(const std::string &textureName){
-    if (TextureLoader::texture2DMap.count(textureName)){
+void TextureLoader::freeTexture2D(const std::string& textureName) {
+    if (TextureLoader::texture2DMap.count(textureName)) {
         glDeleteTextures(1, &TextureLoader::texture2DMap[textureName]);
         TextureLoader::texture2DMap.erase(textureName);
     }
 }
 
-void TextureLoader::freeTextureCubeMap(const std::vector<std::string> &textureNames){
-    if(TextureLoader::textureCubeMapMap.count(textureNames)){
+void TextureLoader::freeTextureCubeMap(const std::vector<std::string>& textureNames) {
+    if (TextureLoader::textureCubeMapMap.count(textureNames)) {
         glDeleteTextures(1, &TextureLoader::textureCubeMapMap[textureNames]);
         TextureLoader::textureCubeMapMap.erase(textureNames);
     }
 }
 
-void TextureLoader::freeTextures(){
+void TextureLoader::freeTextures() {
     std::vector<GLuint> textureIds;
-    auto transform_func = [](auto p){return p.second;};
+    auto transform_func = [](auto p) {
+        return p.second;
+    };
     std::transform(texture2DMap.begin(), texture2DMap.end(), std::back_inserter(textureIds), transform_func);
     std::transform(textureCubeMapMap.begin(), textureCubeMapMap.end(), std::back_inserter(textureIds), transform_func);
     glDeleteTextures(textureIds.size(), textureIds.data());
@@ -46,15 +48,15 @@ void TextureLoader::freeTextures(){
     textureCubeMapMap.clear();
 }
 
-void TextureLoader::setTextureRoot(const std::filesystem::path &newTextureRoot){
-    if (!std::filesystem::exists(newTextureRoot)){
+void TextureLoader::setTextureRoot(const std::filesystem::path& newTextureRoot) {
+    if (!std::filesystem::exists(newTextureRoot)) {
         return;
     }
     TextureLoader::freeTextures();
     TextureLoader::textureRoot = newTextureRoot;
 }
 
-std::vector<std::byte> getImageData(const std::string& src, int& width, int& height){
+std::vector<std::byte> getImageData(const std::string& src, int& width, int& height) {
     png_image loadedImage;
     std::memset(&loadedImage, 0, sizeof(loadedImage));
     loadedImage.version = PNG_IMAGE_VERSION;
@@ -67,10 +69,10 @@ std::vector<std::byte> getImageData(const std::string& src, int& width, int& hei
     return imageData;
 }
 
-void TextureLoader::loadTexture2D(const std::string& textureKey){
+void TextureLoader::loadTexture2D(const std::string& textureKey) {
     auto currentPath = std::filesystem::current_path();
     std::filesystem::current_path(TextureLoader::textureRoot);
-    if (std::filesystem::exists(textureKey)){
+    if (std::filesystem::exists(textureKey)) {
         GLint currentBoundTexture = 0;
         glGetIntegerv(GL_TEXTURE_BINDING_2D, &currentBoundTexture);
         GLuint textureId;
@@ -86,24 +88,23 @@ void TextureLoader::loadTexture2D(const std::string& textureKey){
         glGenerateMipmap(GL_TEXTURE_2D);
         TextureLoader::texture2DMap[textureKey] = textureId;
         glBindTexture(GL_TEXTURE_2D, currentBoundTexture);
-    }
-    else {
+    } else {
         TextureLoader::texture2DMap[textureKey] = 0;
     }
     std::filesystem::current_path(currentPath);
 }
 
-void TextureLoader::loadTextureCubeMap(const std::vector<std::string>& textureKey){
+void TextureLoader::loadTextureCubeMap(const std::vector<std::string>& textureKey) {
     auto currentPath = std::filesystem::current_path();
     std::filesystem::current_path(TextureLoader::textureRoot);
     bool bValid = textureKey.size() == 6;
-    for (const auto& texK : textureKey){
-        if (!bValid){
+    for (const auto& texK: textureKey) {
+        if (!bValid) {
             break;
         }
         bValid = std::filesystem::exists(texK);
     }
-    if (bValid){
+    if (bValid) {
         GLint currentBoundTexture = 0;
         glGetIntegerv(GL_TEXTURE_BINDING_CUBE_MAP, &currentBoundTexture);
         GLuint textureId;
@@ -114,7 +115,7 @@ void TextureLoader::loadTextureCubeMap(const std::vector<std::string>& textureKe
         glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
         glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
         glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
-        for (int i = 0; i < 6; i++){
+        for (int i = 0; i < 6; i++) {
             int width, height;
             auto imageData = getImageData(textureKey[i], width, height);
             glTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + i, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, imageData.data());
@@ -122,10 +123,8 @@ void TextureLoader::loadTextureCubeMap(const std::vector<std::string>& textureKe
         glGenerateMipmap(GL_TEXTURE_CUBE_MAP);
         TextureLoader::textureCubeMapMap[textureKey] = textureId;
         glBindTexture(GL_TEXTURE_CUBE_MAP, currentBoundTexture);
-    }
-    else {
+    } else {
         TextureLoader::textureCubeMapMap[textureKey] = 0;
     }
     std::filesystem::current_path(currentPath);
 }
-

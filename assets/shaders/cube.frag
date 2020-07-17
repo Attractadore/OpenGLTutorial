@@ -5,6 +5,6 @@ out vec4 fColor;
 
 uniform samplerCube cubeMap;
 
-void main(){
+void main() {
     fColor = texture(cubeMap, fPos);
 }

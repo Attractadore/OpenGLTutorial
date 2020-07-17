@@ -3,8 +3,8 @@
 
 #include <boost/functional/hash.hpp>
 
-#include <unordered_map>
 #include <filesystem>
+#include <unordered_map>
 
 class TextureLoader {
 public:

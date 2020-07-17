@@ -3,6 +3,6 @@ out vec4 fColor;
 
 uniform vec3 normalColor;
 
-void main(){
+void main() {
     fColor = vec4(normalColor, 1.0f);
 }

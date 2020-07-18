@@ -58,7 +58,7 @@ std::string loadShaderSource(std::filesystem::path filePath) {
     return fileContents;
 }
 
-GLuint createShader(GLenum shaderType, std::string shaderSource) {
+GLuint createShader(GLenum shaderType, const std::string& shaderSource) {
     const char* shaderSourceCStr = shaderSource.c_str();
     GLuint shader = glCreateShader(shaderType);
     glShaderSource(shader, 1, &shaderSourceCStr, nullptr);

@@ -385,6 +385,7 @@ int main() {
          {0.25f, 0.25f, 0.0f},
          {-0.25f, 0.25f, 0.0f}};
     int MSAASamples = 4;
+    float gammaValue = 2.2f;
 
     int numCubesX = 10,
         numCubesY = numCubesX;
@@ -872,7 +873,7 @@ int main() {
 
     glUseProgram(gammaCorrectionShaderProgram);
     glUniform1i(glGetUniformLocation(gammaCorrectionShaderProgram, "inputFrame"), 0);
-    glUniform1f(glGetUniformLocation(gammaCorrectionShaderProgram, "gamma"), 2.2f);
+    glUniform1f(glGetUniformLocation(gammaCorrectionShaderProgram, "correctionFactor"), 1.0f / gammaValue);
 
     float forwardAxisValue, rightAxisValue, upAxisValue;
 

@@ -9,16 +9,10 @@ struct LightColor {  // 48 bytes
     vec3 specular;
 };
 
-struct LightK {  // 16 bytes
-    float c;
-    float l;
-    float q;
-};
-
-struct PointLight {  // 80 bytes
+struct PointLight {  // 64 bytes
     LightColor color;
-    LightK k;
     vec3 position;
+    float radius;
 };
 
 struct DirLight {  // 64 bytes
@@ -26,10 +20,10 @@ struct DirLight {  // 64 bytes
     vec3 direction;
 };
 
-struct SpotLight {  // 112 bytes
+struct SpotLight {  // 96 bytes
     LightColor color;
-    LightK k;
     vec3 position;
+    float radius;
     vec3 direction;
     float inner;
     float outer;
@@ -43,8 +37,8 @@ struct MaterialColor {
 
 // Functions
 
-float lightDistanceAtt(float distance, LightK k) {
-    return 1.0f / (k.c + distance * (k.l + distance * k.q));
+float lightDistanceAtt(float distance, float radius) {
+    return pow(radius / max(distance, radius), 2.0f);
 }
 
 float lightAngleAtt(float angle, float inner, float outer) {
@@ -71,14 +65,14 @@ vec3 dirLightLighting(DirLight dl, vec3 fragPos, vec3 fragNormal, vec3 cameraDir
 
 vec3 pointLightLighting(PointLight pl, vec3 fragPos, vec3 fragNormal, vec3 cameraDir, MaterialColor fragMaterial) {
     vec3 resLighting = generalLighting(pl.color, fragNormal, normalize(pl.position - fragPos), cameraDir, fragMaterial);
-    resLighting *= lightDistanceAtt(length(pl.position - fragPos), pl.k);
+    resLighting *= lightDistanceAtt(length(pl.position - fragPos), pl.radius);
     return resLighting;
 }
 
 vec3 spotLightLighting(SpotLight sl, vec3 fragPos, vec3 fragNormal, vec3 cameraDir, MaterialColor fragMaterial) {
     vec3 lightDir = normalize(sl.position - fragPos);
     vec3 resLighting = generalLighting(sl.color, fragNormal, lightDir, cameraDir, fragMaterial);
-    resLighting *= lightDistanceAtt(length(sl.position - fragPos), sl.k);
+    resLighting *= lightDistanceAtt(length(sl.position - fragPos), sl.radius);
     resLighting *= lightAngleAtt(dot(-lightDir, sl.direction), sl.inner, sl.outer);
     return resLighting;
 }

@@ -5,19 +5,19 @@
 #include <algorithm>
 
 std::filesystem::path TextureLoader::textureRoot = "assets/textures/";
-std::unordered_map<std::string, GLuint> TextureLoader::texture2DMap;
+std::unordered_map<std::string, GLuint, boost::hash<std::string>> TextureLoader::texture2DMap;
 std::unordered_map<std::vector<std::string>, GLuint, boost::hash<std::vector<std::string>>> TextureLoader::textureCubeMapMap;
 
-GLuint TextureLoader::getTextureId2D(const std::string& textureName) {
+GLuint TextureLoader::getTextureId2D(const std::string& textureName, bool bSRGBA) {
     if (!TextureLoader::texture2DMap.count(textureName)) {
-        TextureLoader::loadTexture2D(textureName);
+        TextureLoader::loadTexture2D(textureName, bSRGBA);
     }
     return TextureLoader::texture2DMap[textureName];
 }
 
-GLuint TextureLoader::getTextureIdCubeMap(const std::vector<std::string>& textureNames) {
+GLuint TextureLoader::getTextureIdCubeMap(const std::vector<std::string>& textureNames, bool bSRGBA) {
     if (!TextureLoader::textureCubeMapMap.count(textureNames)) {
-        TextureLoader::loadTextureCubeMap(textureNames);
+        TextureLoader::loadTextureCubeMap(textureNames, bSRGBA);
     }
     return TextureLoader::textureCubeMapMap[textureNames];
 }
@@ -69,7 +69,7 @@ std::vector<std::byte> getImageData(const std::string& src, int& width, int& hei
     return imageData;
 }
 
-void TextureLoader::loadTexture2D(const std::string& textureKey) {
+void TextureLoader::loadTexture2D(const std::string& textureKey, bool bSRGBA) {
     auto currentPath = std::filesystem::current_path();
     std::filesystem::current_path(TextureLoader::textureRoot);
     if (std::filesystem::exists(textureKey)) {
@@ -84,7 +84,8 @@ void TextureLoader::loadTexture2D(const std::string& textureKey) {
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
         int width, height;
         auto imageData = getImageData(textureKey, width, height);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, imageData.data());
+        GLint imageFormat = bSRGBA ? GL_SRGB_ALPHA : GL_RGBA;
+        glTexImage2D(GL_TEXTURE_2D, 0, imageFormat, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, imageData.data());
         glGenerateMipmap(GL_TEXTURE_2D);
         TextureLoader::texture2DMap[textureKey] = textureId;
         glBindTexture(GL_TEXTURE_2D, currentBoundTexture);
@@ -94,7 +95,7 @@ void TextureLoader::loadTexture2D(const std::string& textureKey) {
     std::filesystem::current_path(currentPath);
 }
 
-void TextureLoader::loadTextureCubeMap(const std::vector<std::string>& textureKey) {
+void TextureLoader::loadTextureCubeMap(const std::vector<std::string>& textureKey, bool bSRGBA) {
     auto currentPath = std::filesystem::current_path();
     std::filesystem::current_path(TextureLoader::textureRoot);
     bool bValid = textureKey.size() == 6;
@@ -115,10 +116,11 @@ void TextureLoader::loadTextureCubeMap(const std::vector<std::string>& textureKe
         glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
         glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
         glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+        GLint imageFormat = bSRGBA ? GL_SRGB_ALPHA : GL_RGBA;
         for (int i = 0; i < 6; i++) {
             int width, height;
             auto imageData = getImageData(textureKey[i], width, height);
-            glTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + i, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, imageData.data());
+            glTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + i, 0, imageFormat, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, imageData.data());
         }
         glGenerateMipmap(GL_TEXTURE_CUBE_MAP);
         TextureLoader::textureCubeMapMap[textureKey] = textureId;

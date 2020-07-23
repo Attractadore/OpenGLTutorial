@@ -21,8 +21,8 @@ fIn;
 out vec4 fColor;
 
 layout(std140) uniform LightsBlock {
-    PointLight pointLights[MAX_POINT_LIGHTS];  // 800 bytes
-    SpotLight spotLights[MAX_SPOT_LIGHTS];     // 1120 bytes
+    PointLight pointLights[MAX_POINT_LIGHTS];  // 640 bytes
+    SpotLight spotLights[MAX_SPOT_LIGHTS];     // 960 bytes
     DirLight dirLights[MAX_DIR_LIGHTS];        // 640 bytes
     int numPointLights;                        // 4 bytes
     int numSpotLights;                         // 4 bytes

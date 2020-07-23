@@ -28,12 +28,18 @@ glm::vec3 sampleLightColor() {
     return sampleVector(cMin, cMax, cMin, cMax, cMin, cMax);
 }
 
+float sampleAmplification() {
+    float aMin = 20.0f;
+    float aMax = 50.0f;
+    return RandomSampler::randomFloat(aMin, aMax);
+}
+
 float sampleAmbient() {
     return RandomSampler::randomFloat(0.05f, 0.2f);
 }
 
-std::tuple<float, float, float> sampleK() {
-    return {1.0f, RandomSampler::randomFloat(0.0f, 0.05f), RandomSampler::randomFloat(0.0f, 0.05f)};
+float sampleRadius() {
+    return RandomSampler::randomFloat(0.1f, 0.3f);
 }
 
 std::pair<float, float> sampleCos() {
@@ -56,8 +62,8 @@ void PointLight::genPosition() {
     this->position = samplePosition();
 }
 
-void PointLight::genK() {
-    std::tie(this->kc, this->kl, this->kq) = sampleK();
+void PointLight::genRadius() {
+    this->radius = sampleRadius();
 }
 
 void SpotLight::genCos() {
@@ -73,13 +79,22 @@ DirectionalLight::DirectionalLight():
     this->genDirection();
 }
 
-PointLight::PointLight():
-    LightCommon() {
+void PointLight::genColor() {
+    LightCommon::genColor();
+    auto amp = sampleAmplification();
+    this->ambient *= amp;
+    this->diffuse *= amp;
+    this->specular *= amp;
+}
+
+PointLight::PointLight() {
+    this->genColor();
     this->genPosition();
-    this->genK();
+    this->genRadius();
 }
 
 SpotLight::SpotLight():
     PointLight(), DirectionalLight() {
     this->genCos();
+    this->radius *= 2.0f;
 }

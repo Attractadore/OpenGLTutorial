@@ -122,7 +122,7 @@ void setShaderMatrial(GLuint shaderProgram, const Material& material) {
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, TextureLoader::getTextureId2D(material.diffuseMap));
     glActiveTexture(GL_TEXTURE1);
-    glBindTexture(GL_TEXTURE_2D, TextureLoader::getTextureId2D(material.specularMap));
+    glBindTexture(GL_TEXTURE_2D, TextureLoader::getTextureId2D(material.specularMap, false));
     glUniform1f(glGetUniformLocation(shaderProgram, "material.shininess"), material.shininess);
 }
 
@@ -195,10 +195,8 @@ void copyLightColor(std::byte* dst, const LightCommon& light) {
     std::memcpy(dst + 32, glm::value_ptr(light.specular), 12);
 }
 
-void copyLightAttenuation(std::byte* dst, const PointLight& light) {
-    std::memcpy(dst + 0, &light.kc, 4);
-    std::memcpy(dst + 4, &light.kl, 4);
-    std::memcpy(dst + 8, &light.kq, 4);
+void copyLightRadius(std::byte* dst, const PointLight& light) {
+    std::memcpy(dst, &light.radius, 4);
 }
 
 void copyLightPosition(std::byte* dst, const PointLight& light) {
@@ -248,7 +246,7 @@ void calculateCubeMatrices(int w, int h, float dX, float dY, std::vector<std::pa
 void calculatePointLightMatrices(const std::vector<PointLight>& lights, std::vector<glm::mat4>& matrices) {
     for (const auto& light: lights) {
         glm::mat4 model = glm::translate(glm::mat4(1.0f), light.position);
-        model = glm::scale(model, 0.2f * glm::vec3(1.0f, 1.0f, 1.0f));
+        model = glm::scale(model, light.radius * glm::vec3(1.0f, 1.0f, 1.0f));
         matrices.push_back(model);
     }
 }
@@ -259,7 +257,7 @@ void calculateSpotLightMatrices(const std::vector<SpotLight>& lights, std::vecto
         float angle = glm::acos(glm::dot(glm::normalize(light.direction), {0.0f, 0.0f, -1.0f}));
         glm::vec3 rotateAxis = glm::normalize(glm::cross({0.0f, 0.0f, -1.0f}, light.direction));
         model = glm::rotate(model, angle, rotateAxis);
-        model = glm::scale(model, 0.4f * glm::vec3(1.0f, 1.0f, 1.0f));
+        model = glm::scale(model, light.radius / glm::sqrt(3.0f) * glm::vec3(1.0f, 1.0f, 1.0f));
         matrices.push_back(model);
     }
 }
@@ -353,6 +351,9 @@ int main() {
     constexpr int MAX_POINT_LIGHTS = 10,
                   MAX_SPOT_LIGHTS = 10,
                   MAX_DIRECTIONAL_LIGHTS = 10;
+    constexpr int POINT_LIGHT_SIZE = 64,
+                  SPOT_LIGHT_SIZE = 96,
+                  DIRECTIONAL_LIGHT_SIZE = 64;
 
     int numPointLights = 5,
         numSpotLights = 5 + 1,
@@ -374,7 +375,8 @@ int main() {
          bSkybox = true,
          bBorder = false,
          bSnow = true,
-         bShowMag = false;
+         bShowMag = false,
+         bGammaCorrect = true;
     float bloomIntencity = 16.0f;
     int TAASamples = 4;
     std::vector<glm::vec3> TAASamplesPositions =
@@ -433,6 +435,7 @@ int main() {
         lampBorderShaderProgram,
         TAAShaderProgram,
         greyscaleShaderProgram,
+        gammaCorrectionShaderProgram,
         bloomExtractShaderProgram,
         bloomCombineShaderProgram,
         screenRectShaderProgram,
@@ -540,7 +543,7 @@ int main() {
     glGenTextures(fullResPPTextures.size(), fullResPPTextures.data());
     for (const auto& tex: fullResPPTextures) {
         glBindTexture(GL_TEXTURE_2D, tex);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, windowW, windowH, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16, windowW, windowH, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
@@ -550,7 +553,7 @@ int main() {
     glGenTextures(quarterResPPTextures.size(), quarterResPPTextures.data());
     for (const auto& tex: quarterResPPTextures) {
         glBindTexture(GL_TEXTURE_2D, tex);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, windowW / 2, windowH / 2, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16, windowW / 2, windowH / 2, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
@@ -559,7 +562,7 @@ int main() {
 
     glGenTextures(1, &frameTextureArray);
     glBindTexture(GL_TEXTURE_2D_ARRAY, frameTextureArray);
-    glTexImage3D(GL_TEXTURE_2D_ARRAY, 0, GL_RGBA, windowW, windowH, TAASamples, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+    glTexImage3D(GL_TEXTURE_2D_ARRAY, 0, GL_RGBA16, windowW, windowH, TAASamples, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAX_LEVEL, 0);
@@ -573,7 +576,7 @@ int main() {
     MSAASamples = std::min(MSAASamples, maxSamples);
     glGenRenderbuffers(renderBuffers.size(), renderBuffers.data());
     glBindRenderbuffer(GL_RENDERBUFFER, MSColorRenderBuffer);
-    glRenderbufferStorageMultisample(GL_RENDERBUFFER, MSAASamples, GL_RGBA, windowW, windowH);
+    glRenderbufferStorageMultisample(GL_RENDERBUFFER, MSAASamples, GL_RGBA16, windowW, windowH);
     glBindRenderbuffer(GL_RENDERBUFFER, MSDepthStencilRenderBuffer);
     glRenderbufferStorageMultisample(GL_RENDERBUFFER, MSAASamples, GL_DEPTH24_STENCIL8, windowW, windowH);
     glBindRenderbuffer(GL_RENDERBUFFER, blitDepthStencilRenderBuffer);
@@ -624,6 +627,7 @@ int main() {
         auto bloomExtractFragmentShaderSource = loadShaderSource("assets/shaders/bloomextract.frag");
         auto bloomCombineFragmentShaderSource = loadShaderSource("assets/shaders/bloomcombine.frag");
         auto blurFragmentShaderSource = loadShaderSource("assets/shaders/blur.frag");
+        auto gammaCorrectionShaderSource = loadShaderSource("assets/shaders/gamma_correction.frag");
         auto cubeMapVertexShaderSource = loadShaderSource("assets/shaders/cube.vert");
         auto cubeMapFragmentShaderSource = loadShaderSource("assets/shaders/cube.frag");
         auto snowVertexShaderSource = loadShaderSource("assets/shaders/snow.vert");
@@ -699,6 +703,12 @@ int main() {
         blurShaderProgram = createProgram({screenRectVertexShader, blurFragmentShader});
         glDeleteShader(blurFragmentShader);
 
+        // Create gamma correction shader program
+
+        GLuint gammaCorrectionFragmentShader = createShader(GL_FRAGMENT_SHADER, gammaCorrectionShaderSource);
+        gammaCorrectionShaderProgram = createProgram({screenRectVertexShader, gammaCorrectionFragmentShader});
+        glDeleteShader(gammaCorrectionFragmentShader);
+
         glDeleteShader(screenRectVertexShader);
 
         // Create snow shader program
@@ -770,7 +780,7 @@ int main() {
     glBindTexture(GL_TEXTURE_2D, TextureLoader::getTextureId2D(circularPlaneMaterial.diffuseMap));
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-    glBindTexture(GL_TEXTURE_2D, TextureLoader::getTextureId2D(circularPlaneMaterial.specularMap));
+    glBindTexture(GL_TEXTURE_2D, TextureLoader::getTextureId2D(circularPlaneMaterial.specularMap, false));
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
 
@@ -780,38 +790,39 @@ int main() {
     glBufferData(GL_UNIFORM_BUFFER, 2 * sizeof(glm::mat4), nullptr, GL_DYNAMIC_DRAW);
     glBindBufferBase(GL_UNIFORM_BUFFER, 0, matrixUBO);
 
+    constexpr int LIGHT_BUFFER_SIZE = POINT_LIGHT_SIZE * MAX_POINT_LIGHTS + SPOT_LIGHT_SIZE * MAX_SPOT_LIGHTS + DIRECTIONAL_LIGHT_SIZE * MAX_DIRECTIONAL_LIGHTS + 16;
     glBindBuffer(GL_UNIFORM_BUFFER, lightUBO);
-    glBufferData(GL_UNIFORM_BUFFER, 2576, nullptr, GL_DYNAMIC_DRAW);
-    std::vector<std::byte> bufferData(2576);
+    glBufferData(GL_UNIFORM_BUFFER, LIGHT_BUFFER_SIZE, nullptr, GL_DYNAMIC_DRAW);
+    std::vector<std::byte> bufferData(LIGHT_BUFFER_SIZE);
     auto bufferPointer = bufferData.data();
     for (std::size_t i = 0; i < pointLights.size(); i++) {
-        int offset = 80 * i;
+        int offset = POINT_LIGHT_SIZE * i;
         const auto& light = pointLights[i];
         copyLightColor(bufferPointer + offset, light);
-        copyLightAttenuation(bufferPointer + offset + 48, light);
-        copyLightPosition(bufferPointer + offset + 64, light);
+        copyLightPosition(bufferPointer + offset + 48, light);
+        copyLightRadius(bufferPointer + offset + 60, light);
     }
     for (std::size_t i = 0; i < spotLights.size(); i++) {
-        int offset = 80 * MAX_POINT_LIGHTS + 112 * i;
+        int offset = POINT_LIGHT_SIZE * MAX_POINT_LIGHTS + SPOT_LIGHT_SIZE * i;
         const auto& light = spotLights[i];
         copyLightColor(bufferPointer + offset, light);
-        copyLightAttenuation(bufferPointer + offset + 48, light);
-        copyLightPosition(bufferPointer + offset + 64, light);
-        copyLightDirection(bufferPointer + offset + 80, light);
-        copyLightAngle(bufferPointer + offset + 92, light);
+        copyLightPosition(bufferPointer + offset + 48, light);
+        copyLightRadius(bufferPointer + offset + 60, light);
+        copyLightDirection(bufferPointer + offset + 64, light);
+        copyLightAngle(bufferPointer + offset + 76, light);
     }
     for (std::size_t i = 0; i < directionalLights.size(); i++) {
-        int offset = 80 * MAX_POINT_LIGHTS + 112 * MAX_SPOT_LIGHTS + 64 * i;
+        int offset = POINT_LIGHT_SIZE * MAX_POINT_LIGHTS + SPOT_LIGHT_SIZE * MAX_SPOT_LIGHTS + DIRECTIONAL_LIGHT_SIZE * i;
         const auto& light = directionalLights[i];
         copyLightColor(bufferPointer + offset, light);
         copyLightDirection(bufferPointer + offset + 48, light);
     }
     {
-        int baseOffset = 80 * MAX_POINT_LIGHTS + 112 * MAX_SPOT_LIGHTS + 64 * MAX_DIRECTIONAL_LIGHTS;
+        int baseOffset = POINT_LIGHT_SIZE * MAX_POINT_LIGHTS + SPOT_LIGHT_SIZE * MAX_SPOT_LIGHTS + DIRECTIONAL_LIGHT_SIZE * MAX_DIRECTIONAL_LIGHTS;
         std::memcpy(bufferPointer + baseOffset + 0, &numPointLights, 4);
         std::memcpy(bufferPointer + baseOffset + 8, &numDirectionalLights, 4);
     }
-    glBufferSubData(GL_UNIFORM_BUFFER, 0, 2576, bufferData.data());
+    glBufferSubData(GL_UNIFORM_BUFFER, 0, LIGHT_BUFFER_SIZE, bufferData.data());
     bufferData.clear();
     glBindBufferBase(GL_UNIFORM_BUFFER, 1, lightUBO);
 
@@ -858,6 +869,10 @@ int main() {
     glUniform3fv(glGetUniformLocation(snowShaderProgram, "snowDiffuse"), 1, glm::value_ptr(glm::vec3(1.0f)));
     glUniform3fv(glGetUniformLocation(snowShaderProgram, "snowDiffuse"), 1, glm::value_ptr(glm::vec3(1.0f)));
     glUniform1f(glGetUniformLocation(snowShaderProgram, "snowShininess"), 64.0f);
+
+    glUseProgram(gammaCorrectionShaderProgram);
+    glUniform1i(glGetUniformLocation(gammaCorrectionShaderProgram, "inputFrame"), 0);
+    glUniform1f(glGetUniformLocation(gammaCorrectionShaderProgram, "gamma"), 2.2f);
 
     float forwardAxisValue, rightAxisValue, upAxisValue;
 
@@ -919,6 +934,12 @@ int main() {
         if (glfwGetKey(window, GLFW_KEY_P) == GLFW_PRESS) {
             bSnow = true;
         }
+        if (glfwGetKey(window, GLFW_KEY_F) == GLFW_PRESS) {
+            bGammaCorrect = false;
+        }
+        if (glfwGetKey(window, GLFW_KEY_G) == GLFW_PRESS) {
+            bGammaCorrect = true;
+        }
         if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS) {
             CameraManager::disableCameraLook();
         }
@@ -971,13 +992,13 @@ int main() {
         if (bFlashLight and numSpotLights > 0) {
             spotLights.back().direction = camera->getCameraForwardVector();
             spotLights.back().position = camera->getCameraPos();
-            int offset = 80 * MAX_POINT_LIGHTS + 112 * (spotLights.size() - 1);
-            glBufferSubData(GL_UNIFORM_BUFFER, offset + 64, 12, glm::value_ptr(spotLights.back().position));
-            glBufferSubData(GL_UNIFORM_BUFFER, offset + 80, 12, glm::value_ptr(spotLights.back().direction));
+            int offset = POINT_LIGHT_SIZE * MAX_POINT_LIGHTS + SPOT_LIGHT_SIZE * (spotLights.size() - 1);
+            glBufferSubData(GL_UNIFORM_BUFFER, offset + 48, 12, glm::value_ptr(spotLights.back().position));
+            glBufferSubData(GL_UNIFORM_BUFFER, offset + 64, 12, glm::value_ptr(spotLights.back().direction));
         }
         {
             int numUsedSpotlights = std::max(numSpotLights - !bFlashLight, 0);
-            int offset = 80 * MAX_POINT_LIGHTS + 112 * MAX_SPOT_LIGHTS + 64 * MAX_DIRECTIONAL_LIGHTS + 4;
+            int offset = POINT_LIGHT_SIZE * MAX_POINT_LIGHTS + SPOT_LIGHT_SIZE * MAX_SPOT_LIGHTS + DIRECTIONAL_LIGHT_SIZE * MAX_DIRECTIONAL_LIGHTS + 4;
             glBufferSubData(GL_UNIFORM_BUFFER, offset, 4, &numUsedSpotlights);
         }
 
@@ -1234,6 +1255,14 @@ int main() {
             glDrawElements(GL_TRIANGLES, rectVertexIndices.size(), GL_UNSIGNED_INT, nullptr);
             swapBuffers(fullResReadIndex);
         }
+
+        if (bGammaCorrect) {
+            glUseProgram(gammaCorrectionShaderProgram);
+            glBindTexture(GL_TEXTURE_2D, fullResPPTextures[fullResReadIndex]);
+            glDrawElements(GL_TRIANGLES, rectVertexIndices.size(), GL_UNSIGNED_INT, nullptr);
+            swapBuffers(fullResReadIndex);
+        }
+
         glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
         glBlitFramebuffer(0, 0, windowW, windowH, 0, 0, windowW, windowH, GL_COLOR_BUFFER_BIT, GL_LINEAR);
 

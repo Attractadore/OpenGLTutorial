@@ -6,7 +6,7 @@
 struct LightCommon {
     LightCommon();
 
-    void genColor();
+    virtual void genColor();
 
     glm::vec3 ambient;
     glm::vec3 diffuse;
@@ -25,11 +25,11 @@ struct PointLight: virtual LightCommon {
     PointLight();
 
     void genPosition();
-    void genK();
+    void genRadius();
+    virtual void genColor() override;
 
     glm::vec3 position;
-    float kc = 1.0f;
-    float kl, kq;
+    float radius;
 };
 
 struct SpotLight: PointLight, DirectionalLight {

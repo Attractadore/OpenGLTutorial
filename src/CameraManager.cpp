@@ -43,15 +43,6 @@ void CameraManager::setFarPlane(float farPlane) {
     CameraManager::updateProjectionMatrix();
 }
 
-const glm::mat4& CameraManager::getViewMatrix() {
-    CameraManager::updateViewMatrix();
-    return CameraManager::view;
-}
-
-const glm::mat4& CameraManager::getProjectionMatrix() {
-    return CameraManager::projection;
-}
-
 void CameraManager::updateViewMatrix() {
     if (CameraManager::currentCamera.expired()) {
         return;

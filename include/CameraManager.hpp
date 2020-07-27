@@ -18,8 +18,22 @@ public:
     static void setNearPlane(float nearPlane);
     static void setFarPlane(float farPlane);
 
-    static const glm::mat4& getViewMatrix();
-    static const glm::mat4& getProjectionMatrix();
+    static const glm::mat4& getViewMatrix() {
+        CameraManager::updateViewMatrix();
+        return CameraManager::view;
+    }
+    static const glm::mat4& getProjectionMatrix() {
+        return CameraManager::projection;
+    }
+    static float getHorizontalFOV() {
+        return CameraManager::horizontalFOV;
+    }
+    static float getVerticalFOV() {
+        return CameraManager::verticalFOV;
+    }
+    static float getFarPlane() {
+        return CameraManager::farPlane;
+    }
 
     static void addCameraPitchInput(float degrees);
     static void addCameraYawInput(float degrees);

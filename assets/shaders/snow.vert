@@ -7,6 +7,7 @@ layout(location = 3) in vec3 fallVec;
 out VERT_OUT {
     vec3 pos;
     vec3 normal;
+    vec2 tex;
 }
 vOut;
 
@@ -26,5 +27,6 @@ void main() {
     worldPos.xyz = worldPos.xyz + startPos + fallVec * sin(freq * time + phase);
     vOut.pos = worldPos.xyz;
     vOut.normal = vNormal;
+    vOut.tex = vec2(0.0f);
     gl_Position = matrices.projection * matrices.view * worldPos;
 }

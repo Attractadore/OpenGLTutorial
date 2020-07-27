@@ -256,7 +256,9 @@ void calculateSpotLightMatrices(const std::vector<SpotLight>& lights, std::vecto
         glm::mat4 model = glm::translate(glm::mat4(1.0f), light.position);
         float angle = glm::acos(glm::dot(glm::normalize(light.direction), {0.0f, 0.0f, -1.0f}));
         glm::vec3 rotateAxis = glm::normalize(glm::cross({0.0f, 0.0f, -1.0f}, light.direction));
-        model = glm::rotate(model, angle, rotateAxis);
+        if (glm::length(rotateAxis) > 0.0f) {
+            model = glm::rotate(model, angle, rotateAxis);
+        }
         model = glm::scale(model, light.radius / glm::sqrt(3.0f) * glm::vec3(1.0f, 1.0f, 1.0f));
         matrices.push_back(model);
     }
@@ -266,8 +268,11 @@ void calculateDirectionalLightMatrices(const std::vector<DirectionalLight>& ligh
     for (const auto& light: lights) {
         glm::mat4 model = glm::translate(glm::mat4(1.0f), {0.0f, 0.0f, 30.0f});
         float angle = glm::acos(glm::dot(glm::normalize(light.direction), {0.0f, 0.0f, -1.0f}));
-        glm::vec3 rotateAxis = glm::normalize(glm::cross({0.0f, 0.0f, -1.0f}, light.direction));
-        model = glm::rotate(model, angle, rotateAxis);
+        glm::vec3 rotateAxis = glm::cross({0.0f, 0.0f, -1.0f}, light.direction);
+        if (glm::length(rotateAxis) > 0.0f) {
+            rotateAxis = glm::normalize(rotateAxis);
+            model = glm::rotate(model, angle, rotateAxis);
+        }
         matrices.push_back(model);
     }
 }
@@ -340,6 +345,39 @@ void swapBuffers(int& readBufferIndex) {
     glDrawBuffer(GL_COLOR_ATTACHMENT0 + !readBufferIndex);
 }
 
+void drawShadowCasters(GLuint shadowProgram, const glm::mat4& lightTransform, GLuint cubeVAO, const std::vector<std::pair<glm::mat4, glm::mat3>>& cubeMatrices, int numCubeVertices, GLuint pyramidVAO, const std::vector<std::pair<glm::mat4, glm::mat3>>& pyramidMatrices, int numPyramidVertices) {
+    glEnable(GL_CULL_FACE);
+    glCullFace(GL_FRONT);
+    glUseProgram(shadowProgram);
+    glUniformMatrix4fv(glGetUniformLocation(shadowProgram, "transform"), 1, GL_FALSE, glm::value_ptr(lightTransform));
+
+    for (const auto& [m, _]: cubeMatrices) {
+        glUniformMatrix4fv(glGetUniformLocation(shadowProgram, "model"), 1, GL_FALSE, glm::value_ptr(m));
+        glBindVertexArray(cubeVAO);
+        glDrawElements(GL_TRIANGLES, numCubeVertices, GL_UNSIGNED_INT, nullptr);
+    }
+
+    for (const auto& [m, _]: pyramidMatrices) {
+        glUniformMatrix4fv(glGetUniformLocation(shadowProgram, "model"), 1, GL_FALSE, glm::value_ptr(m));
+        glBindVertexArray(pyramidVAO);
+        glDrawElements(GL_TRIANGLES, numPyramidVertices, GL_UNSIGNED_INT, nullptr);
+    }
+
+    glCullFace(GL_BACK);
+    glDisable(GL_CULL_FACE);
+}
+
+glm::vec3 calculateLightUp(const glm::vec3& lightDir) {
+    glm::vec3 lightUp = {0.0f, 0.0f, 1.0f};
+    glm::vec3 lightLeft = glm::cross(lightUp, lightDir);
+    if (glm::length(lightLeft) > 0.0f) {
+        lightUp = glm::cross(lightDir, lightLeft);
+    } else {
+        lightUp = {0.0f, 1.0f, 0.0f};
+    }
+    return lightUp;
+}
+
 int main() {
     float horizontalFOV = 90.0f;
     int windowW, windowH;
@@ -355,8 +393,8 @@ int main() {
                   SPOT_LIGHT_SIZE = 96,
                   DIRECTIONAL_LIGHT_SIZE = 64;
 
-    int numPointLights = 5,
-        numSpotLights = 5 + 1,
+    int numPointLights = 0,
+        numSpotLights = 0 + 1,
         numDirectionalLights = 1;
 
     numPointLights = std::min(numPointLights, MAX_POINT_LIGHTS);
@@ -372,9 +410,9 @@ int main() {
          bBloom = true,
          bTAA = false,
          bMSAA = true,
-         bSkybox = true,
+         bSkybox = false,
          bBorder = false,
-         bSnow = true,
+         bSnow = false,
          bShowMag = false,
          bGammaCorrect = true;
     float bloomIntencity = 16.0f;
@@ -386,6 +424,7 @@ int main() {
          {-0.25f, 0.25f, 0.0f}};
     int MSAASamples = 4;
     float gammaValue = 2.2f;
+    constexpr int SHADOWMAP_RESOLUTION = 2048;
 
     int numCubesX = 10,
         numCubesY = numCubesX;
@@ -397,6 +436,9 @@ int main() {
 
     int numSnowParticles = 10'000;
     glm::mat4 snowParticleModel = glm::scale(glm::mat4(1.0f), 0.02f * glm::vec3(1.0f));
+    std::vector<GLuint> snowTextures(2);
+    GLuint& snowDiffuseTexture = snowTextures[0];
+    GLuint& snowSpecularTexture = snowTextures[1];
 
     std::vector<glm::mat4> pointLightMatrices, spotLightMatrices, directionalLightMatrices;
 
@@ -425,7 +467,7 @@ int main() {
     setupWindows(transparentObjects, windowRectDW, windowRectDH, windowMaterial);
     setupGrass(transparentObjects, windowRectDW, windowRectDH, grassMaterial);
 
-    glm::vec3 cameraStartPos = {-5.0f, 0.0f, 3.0f},
+    glm::vec3 cameraStartPos = {0.0f, 0.0f, 3.0f},
               cameraStartLookDirection = {1.0f, 0.0f, 0.0f};
 
     auto camera = std::make_shared<Camera>(cameraStartPos, cameraStartLookDirection, glm::vec3(0.0f, 0.0f, 1.0f));
@@ -442,8 +484,14 @@ int main() {
         screenRectShaderProgram,
         blurShaderProgram,
         cubeMapShaderProgram,
-        snowShaderProgram;
+        snowShaderProgram,
+        shadowProgram,
+        depthVisualizationProgram;
     GLuint frameTextureArray;
+    std::vector<std::size_t> shadowMapArraySizes = {spotLights.size(), directionalLights.size()};
+    std::vector<GLuint> shadowMapArrays(shadowMapArraySizes.size());
+    GLuint& spotLightShadowMapArray = shadowMapArrays[0];
+    GLuint& directionalLightShadowMapArray = shadowMapArrays[1];
     std::vector<GLuint> fullResPPTextures(2),
         quarterResPPTextures(2);
     int colorIndex = 0,
@@ -481,11 +529,12 @@ int main() {
     GLuint& matrixUBO = uniformBuffers[0];
     GLuint& lightUBO = uniformBuffers[1];
 
-    std::vector<GLuint> frameBuffers(4);
+    std::vector<GLuint> frameBuffers(5);
     GLuint& PPFBO = frameBuffers[0];
     GLuint& MSFBO = frameBuffers[1];
     GLuint& blitFBO = frameBuffers[2];
     GLuint& QRFBO = frameBuffers[3];
+    GLuint& directionalShadowMapFBO = frameBuffers[4];
 
     std::vector<GLuint> renderBuffers(3);
     GLuint& MSColorRenderBuffer = renderBuffers[0];
@@ -539,6 +588,17 @@ int main() {
     glStencilOp(GL_KEEP, GL_KEEP, GL_REPLACE);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
+    // Setup snow material
+    glGenTextures(snowTextures.size(), snowTextures.data());
+    for (const auto& tex: snowTextures) {
+        glBindTexture(GL_TEXTURE_2D, tex);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 1, 1, 0, GL_RGBA, GL_FLOAT, glm::value_ptr(glm::vec4(1.0f)));
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    }
+
     // Setup rendering textures
 
     glGenTextures(fullResPPTextures.size(), fullResPPTextures.data());
@@ -564,11 +624,23 @@ int main() {
     glGenTextures(1, &frameTextureArray);
     glBindTexture(GL_TEXTURE_2D_ARRAY, frameTextureArray);
     glTexImage3D(GL_TEXTURE_2D_ARRAY, 0, GL_RGBA16, windowW, windowH, TAASamples, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAX_LEVEL, 0);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+    glGenTextures(shadowMapArrays.size(), shadowMapArrays.data());
+    for (std::size_t i = 0; i < shadowMapArrays.size(); i++) {
+        glBindTexture(GL_TEXTURE_2D_ARRAY, shadowMapArrays[i]);
+        glTexImage3D(GL_TEXTURE_2D_ARRAY, 0, GL_DEPTH_COMPONENT, SHADOWMAP_RESOLUTION, SHADOWMAP_RESOLUTION, shadowMapArraySizes[i], 0, GL_DEPTH_COMPONENT, GL_UNSIGNED_BYTE, nullptr);
+        glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
+        glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
+        glTexParameterfv(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_BORDER_COLOR, glm::value_ptr(glm::vec4(1.0f)));
+        glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_COMPARE_MODE, GL_COMPARE_REF_TO_TEXTURE);
+        glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_COMPARE_FUNC, GL_LEQUAL);
+    }
 
     // Setup renderbuffers
 
@@ -612,6 +684,11 @@ int main() {
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, quarterResPPTextures[0], 0);
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1, GL_TEXTURE_2D, quarterResPPTextures[1], 0);
 
+    // Setup directional light shadowmap framebuffer
+    glBindFramebuffer(GL_FRAMEBUFFER, directionalShadowMapFBO);
+    glDrawBuffer(GL_NONE);
+    glReadBuffer(GL_NONE);
+
     {
         auto cubeVertexShaderSource = loadShaderSource("assets/shaders/triangle.vert");
         auto cubeFragmentShaderSource = loadShaderSource("assets/shaders/triangle.frag");
@@ -632,13 +709,17 @@ int main() {
         auto cubeMapVertexShaderSource = loadShaderSource("assets/shaders/cube.vert");
         auto cubeMapFragmentShaderSource = loadShaderSource("assets/shaders/cube.frag");
         auto snowVertexShaderSource = loadShaderSource("assets/shaders/snow.vert");
-        auto snowFragmentShaderSource = loadShaderSource("assets/shaders/snow.frag");
+        auto shadowVertexShaderSource = loadShaderSource("assets/shaders/shadow.vert");
+        auto depthVisualizationFragmentShaderSource = loadShaderSource("assets/shaders/visualize_depth_map.frag");
 
         // Create cube shader program
 
         GLuint cubeVertexShader = createShader(GL_VERTEX_SHADER, cubeVertexShaderSource);
         GLuint cubeFragmentShader = createShader(GL_FRAGMENT_SHADER, cubeFragmentShaderSource);
         cubeShaderProgram = createProgram({cubeVertexShader, cubeFragmentShader});
+        GLuint snowVertexShader = createShader(GL_VERTEX_SHADER, snowVertexShaderSource);
+        snowShaderProgram = createProgram({snowVertexShader, cubeFragmentShader});
+        glDeleteShader(snowVertexShader);
         GLuint cubeNormalVertexShader = createShader(GL_VERTEX_SHADER, cubeNormalVertexShaderSource);
         GLuint cubeNormalGeometryShader = createShader(GL_GEOMETRY_SHADER, cubeNormalGeometryShaderSource);
         GLuint cubeNormalFragmentShader = createShader(GL_FRAGMENT_SHADER, cubeNormalFragmentShaderSource);
@@ -710,15 +791,18 @@ int main() {
         gammaCorrectionShaderProgram = createProgram({screenRectVertexShader, gammaCorrectionFragmentShader});
         glDeleteShader(gammaCorrectionFragmentShader);
 
+        // Create depth visualization shader program
+
+        GLuint depthVizualizationFragmentShader = createShader(GL_FRAGMENT_SHADER, depthVisualizationFragmentShaderSource);
+        depthVisualizationProgram = createProgram({screenRectVertexShader, depthVizualizationFragmentShader});
+        glDeleteShader(depthVizualizationFragmentShader);
+
         glDeleteShader(screenRectVertexShader);
 
-        // Create snow shader program
-
-        GLuint snowVertexShader = createShader(GL_VERTEX_SHADER, snowVertexShaderSource);
-        GLuint snowFragmentShader = createShader(GL_FRAGMENT_SHADER, snowFragmentShaderSource);
-        snowShaderProgram = createProgram({snowVertexShader, snowFragmentShader});
-        glDeleteShader(snowVertexShader);
-        glDeleteShader(snowFragmentShader);
+        // Create directional light shadow shader program
+        GLuint shadowVertexShader = createShader(GL_VERTEX_SHADER, shadowVertexShaderSource);
+        shadowProgram = createProgram({shadowVertexShader});
+        glDeleteShader(shadowVertexShader);
     }
 
     auto [cubeVertexData, cubeVertexIndices, cubeMaterial] = loadModelData("assets/meshes/cube.obj")[0];
@@ -791,7 +875,11 @@ int main() {
     glBufferData(GL_UNIFORM_BUFFER, 2 * sizeof(glm::mat4), nullptr, GL_DYNAMIC_DRAW);
     glBindBufferBase(GL_UNIFORM_BUFFER, 0, matrixUBO);
 
-    constexpr int LIGHT_BUFFER_SIZE = POINT_LIGHT_SIZE * MAX_POINT_LIGHTS + SPOT_LIGHT_SIZE * MAX_SPOT_LIGHTS + DIRECTIONAL_LIGHT_SIZE * MAX_DIRECTIONAL_LIGHTS + 16;
+    constexpr int LIGHT_BUFFER_SIZE = POINT_LIGHT_SIZE * MAX_POINT_LIGHTS +
+                                      SPOT_LIGHT_SIZE * MAX_SPOT_LIGHTS +
+                                      DIRECTIONAL_LIGHT_SIZE * MAX_DIRECTIONAL_LIGHTS +
+                                      64 * (MAX_POINT_LIGHTS + MAX_SPOT_LIGHTS + MAX_DIRECTIONAL_LIGHTS) +
+                                      16;
     glBindBuffer(GL_UNIFORM_BUFFER, lightUBO);
     glBufferData(GL_UNIFORM_BUFFER, LIGHT_BUFFER_SIZE, nullptr, GL_DYNAMIC_DRAW);
     std::vector<std::byte> bufferData(LIGHT_BUFFER_SIZE);
@@ -819,7 +907,7 @@ int main() {
         copyLightDirection(bufferPointer + offset + 48, light);
     }
     {
-        int baseOffset = POINT_LIGHT_SIZE * MAX_POINT_LIGHTS + SPOT_LIGHT_SIZE * MAX_SPOT_LIGHTS + DIRECTIONAL_LIGHT_SIZE * MAX_DIRECTIONAL_LIGHTS;
+        int baseOffset = LIGHT_BUFFER_SIZE - 16;
         std::memcpy(bufferPointer + baseOffset + 0, &numPointLights, 4);
         std::memcpy(bufferPointer + baseOffset + 8, &numDirectionalLights, 4);
     }
@@ -867,13 +955,15 @@ int main() {
     glUniformBlockBinding(snowShaderProgram, glGetUniformBlockIndex(snowShaderProgram, "LightsBlock"), 1);
     glUniformMatrix4fv(glGetUniformLocation(snowShaderProgram, "model"), 1, GL_FALSE, glm::value_ptr(snowParticleModel));
     glUniform1f(glGetUniformLocation(snowShaderProgram, "freq"), 0.1f);
-    glUniform3fv(glGetUniformLocation(snowShaderProgram, "snowDiffuse"), 1, glm::value_ptr(glm::vec3(1.0f)));
-    glUniform3fv(glGetUniformLocation(snowShaderProgram, "snowDiffuse"), 1, glm::value_ptr(glm::vec3(1.0f)));
-    glUniform1f(glGetUniformLocation(snowShaderProgram, "snowShininess"), 64.0f);
+    glUniform1i(glGetUniformLocation(snowShaderProgram, "material.diffuseMap"), 0);
+    glUniform1i(glGetUniformLocation(snowShaderProgram, "material.specularMap"), 1);
+    glUniform1f(glGetUniformLocation(snowShaderProgram, "material.shininess"), 64.0f);
 
     glUseProgram(gammaCorrectionShaderProgram);
     glUniform1i(glGetUniformLocation(gammaCorrectionShaderProgram, "inputFrame"), 0);
     glUniform1f(glGetUniformLocation(gammaCorrectionShaderProgram, "correctionFactor"), 1.0f / gammaValue);
+
+    glUseProgram(shadowProgram);
 
     float forwardAxisValue, rightAxisValue, upAxisValue;
 
@@ -999,7 +1089,7 @@ int main() {
         }
         {
             int numUsedSpotlights = std::max(numSpotLights - !bFlashLight, 0);
-            int offset = POINT_LIGHT_SIZE * MAX_POINT_LIGHTS + SPOT_LIGHT_SIZE * MAX_SPOT_LIGHTS + DIRECTIONAL_LIGHT_SIZE * MAX_DIRECTIONAL_LIGHTS + 4;
+            int offset = LIGHT_BUFFER_SIZE - 16 + 4;
             glBufferSubData(GL_UNIFORM_BUFFER, offset, 4, &numUsedSpotlights);
         }
 
@@ -1011,6 +1101,64 @@ int main() {
             sampleTrans.y /= windowH;
             projection = glm::translate(glm::mat4(1.0f), sampleTrans) * projection;
         }
+
+        // Generate shadowmaps
+
+        glBindFramebuffer(GL_FRAMEBUFFER, directionalShadowMapFBO);
+        glViewport(0, 0, SHADOWMAP_RESOLUTION, SHADOWMAP_RESOLUTION);
+        std::vector<glm::mat4> spotLightTransformMatrices;
+        for (int i = 0; i < numSpotLights - !bFlashLight; i++) {
+            glFramebufferTextureLayer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, spotLightShadowMapArray, 0, i);
+            glClear(GL_DEPTH_BUFFER_BIT);
+            const auto& lightDir = spotLights[i].direction;
+            const auto& lightPos = spotLights[i].position;
+            float lightCone = spotLights[i].outerAngleCos;
+            float lightRadius = spotLights[i].radius;
+            glm::vec3 lightUp = calculateLightUp(lightDir);
+            glm::mat4 lightView = glm::lookAt(lightPos, lightPos + lightDir, lightUp);
+            glm::mat4 lightProjection = glm::perspective(2.0f * glm::acos(lightCone), 1.0f, 1.0f, lightRadius);
+            glm::mat4 lightTransform = lightProjection * lightView;
+            spotLightTransformMatrices.push_back(lightTransform);
+
+            drawShadowCasters(shadowProgram, lightTransform, cubeVAO, cubeMatrices, cubeVertexIndices.size(), pyramidVAO, pyramidMatrices, pyramidVertexIndices.size());
+        }
+        std::vector<glm::mat4> directionalLightTransformMatrices;
+        for (int i = 0; i < numDirectionalLights; i++) {
+            glFramebufferTextureLayer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, directionalLightShadowMapArray, 0, i);
+            glClear(GL_DEPTH_BUFFER_BIT);
+            const auto& lightDir = directionalLights[i].direction;
+            glm::vec3 lightUp = calculateLightUp(lightDir);
+            glm::mat4 lightView = glm::lookAt(camera->getCameraPos(), camera->getCameraPos() + lightDir, lightUp);
+            float verticalFOV = CameraManager::getVerticalFOV();
+            float horizontalFOV = CameraManager::getHorizontalFOV();
+            glm::vec3 cameraLookPoint = camera->getCameraPos() + camera->getCameraForwardVector() * CameraManager::getFarPlane();
+            glm::vec3 upVectorScaled = glm::tan(glm::radians(verticalFOV / 2.0f)) * CameraManager::getFarPlane() * camera->getCameraUpVector();
+            glm::vec3 rightVectorScaled = glm::tan(glm::radians(horizontalFOV / 2.0f)) * CameraManager::getFarPlane() * camera->getCameraRightVector();
+            std::vector<glm::vec3> cameraFrustrumPoints =
+                {cameraLookPoint + upVectorScaled + rightVectorScaled,
+                 cameraLookPoint + upVectorScaled - rightVectorScaled,
+                 cameraLookPoint - upVectorScaled + rightVectorScaled,
+                 cameraLookPoint - upVectorScaled - rightVectorScaled};
+            std::for_each(cameraFrustrumPoints.begin(), cameraFrustrumPoints.end(), [&lightView](auto& e) { e = lightView * glm::vec4(e, 1.0f); });
+            glm::vec3 minCoords(0.0f);
+            glm::vec3 maxCoords(0.0f);
+            minCoords = glm::min(minCoords, glm::min(cameraFrustrumPoints[0], glm::min(cameraFrustrumPoints[1], glm::min(cameraFrustrumPoints[2], cameraFrustrumPoints[3]))));
+            maxCoords = glm::max(maxCoords, glm::max(cameraFrustrumPoints[0], glm::max(cameraFrustrumPoints[1], glm::max(cameraFrustrumPoints[2], cameraFrustrumPoints[3]))));
+            maxCoords.z += CameraManager::getFarPlane();
+            glm::mat4 lightProjection = glm::ortho(minCoords.x, maxCoords.x, minCoords.y, maxCoords.y, -maxCoords.z, -minCoords.z);
+            glm::mat4 lightTransform = lightProjection * lightView;
+            directionalLightTransformMatrices.push_back(lightTransform);
+
+            drawShadowCasters(shadowProgram, lightTransform, cubeVAO, cubeMatrices, cubeVertexIndices.size(), pyramidVAO, pyramidMatrices, pyramidVertexIndices.size());
+        }
+        glBindBuffer(GL_UNIFORM_BUFFER, lightUBO);
+        int offset = LIGHT_BUFFER_SIZE - 16 - 64 * MAX_DIRECTIONAL_LIGHTS;
+        glBufferSubData(GL_UNIFORM_BUFFER, offset, sizeof(glm::mat4) * directionalLightTransformMatrices.size(), directionalLightTransformMatrices.data());
+        offset -= 64 * MAX_SPOT_LIGHTS;
+        glBufferSubData(GL_UNIFORM_BUFFER, offset, sizeof(glm::mat4) * spotLightTransformMatrices.size(), spotLightTransformMatrices.data());
+        glViewport(0, 0, windowW, windowH);
+
+        // Start drawing
 
         glBindFramebuffer(GL_FRAMEBUFFER, blitFBO);
         glDrawBuffer(GL_COLOR_ATTACHMENT0 + colorIndex);
@@ -1031,6 +1179,12 @@ int main() {
         glUseProgram(cubeShaderProgram);
 
         glUniform3fv(glGetUniformLocation(cubeShaderProgram, "cameraPos"), 1, glm::value_ptr(camera->getCameraPos()));
+        glUniform1i(glGetUniformLocation(cubeShaderProgram, "spotLightShadowMapArray"), 11);
+        glUniform1i(glGetUniformLocation(cubeShaderProgram, "dirLightShadowMapArray"), 12);
+        glActiveTexture(GL_TEXTURE11);
+        glBindTexture(GL_TEXTURE_2D_ARRAY, spotLightShadowMapArray);
+        glActiveTexture(GL_TEXTURE12);
+        glBindTexture(GL_TEXTURE_2D_ARRAY, directionalLightShadowMapArray);
 
         // Draw cubes
 
@@ -1134,9 +1288,19 @@ int main() {
         // Draw snow
 
         if (bSnow) {
+            glActiveTexture(GL_TEXTURE0);
+            glBindTexture(GL_TEXTURE_2D, snowDiffuseTexture);
+            glActiveTexture(GL_TEXTURE1);
+            glBindTexture(GL_TEXTURE_2D, snowSpecularTexture);
+            glActiveTexture(GL_TEXTURE11);
+            glBindTexture(GL_TEXTURE_2D_ARRAY, spotLightShadowMapArray);
+            glActiveTexture(GL_TEXTURE12);
+            glBindTexture(GL_TEXTURE_2D_ARRAY, directionalLightShadowMapArray);
             glUseProgram(snowShaderProgram);
             glUniform1f(glGetUniformLocation(snowShaderProgram, "time"), glfwGetTime());
             glUniform3fv(glGetUniformLocation(snowShaderProgram, "cameraPos"), 1, glm::value_ptr(camera->getCameraPos()));
+            glUniform1i(glGetUniformLocation(snowShaderProgram, "spotLightShadowMapArray"), 11);
+            glUniform1i(glGetUniformLocation(snowShaderProgram, "dirLightShadowMapArray"), 12);
             glBindVertexArray(snowVAO);
             glDrawElementsInstanced(GL_TRIANGLES, sphereVertexIndices.size(), GL_UNSIGNED_INT, nullptr, numSnowParticles);
         }

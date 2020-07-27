@@ -16,7 +16,6 @@ target_include_directories(${PROJECT_NAME} PRIVATE
                     "${PROJECT_SOURCE_DIR}/../include/"
                      ${OPENGL_INCLUDE_DIRS}
                      ${GLFW3_INCLUDE_DIRS}
-                     ${FMT_INCLUDE_DIRS}
                      ${GLM_INCLUDE_DIRS}
                      ${ASSIMP_INCLUDE_DIRS}
                      ${BOOST_INCLUDE_DIRS}

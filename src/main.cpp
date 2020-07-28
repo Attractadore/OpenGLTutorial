@@ -971,6 +971,9 @@ int main() {
     glUniform1f(glGetUniformLocation(snowShaderProgram, "freq"), 0.1f);
     glUniform1i(glGetUniformLocation(snowShaderProgram, "material.diffuseMap"), 0);
     glUniform1i(glGetUniformLocation(snowShaderProgram, "material.specularMap"), 1);
+    glUniform1i(glGetUniformLocation(snowShaderProgram, "pointLightShadowMapArray"), 10);
+    glUniform1i(glGetUniformLocation(snowShaderProgram, "spotLightShadowMapArray"), 11);
+    glUniform1i(glGetUniformLocation(snowShaderProgram, "dirLightShadowMapArray"), 12);
     glUniform1f(glGetUniformLocation(snowShaderProgram, "material.shininess"), 64.0f);
 
     glUseProgram(gammaCorrectionShaderProgram);
@@ -1342,8 +1345,6 @@ int main() {
             glUseProgram(snowShaderProgram);
             glUniform1f(glGetUniformLocation(snowShaderProgram, "time"), glfwGetTime());
             glUniform3fv(glGetUniformLocation(snowShaderProgram, "cameraPos"), 1, glm::value_ptr(camera->getCameraPos()));
-            glUniform1i(glGetUniformLocation(snowShaderProgram, "spotLightShadowMapArray"), 11);
-            glUniform1i(glGetUniformLocation(snowShaderProgram, "dirLightShadowMapArray"), 12);
             glBindVertexArray(snowVAO);
             glDrawElementsInstanced(GL_TRIANGLES, sphereVertexIndices.size(), GL_UNSIGNED_INT, nullptr, numSnowParticles);
         }

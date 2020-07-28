@@ -29,8 +29,8 @@ glm::vec3 sampleLightColor() {
 }
 
 float sampleAmplification() {
-    float aMin = 20.0f;
-    float aMax = 50.0f;
+    float aMin = 50.0f;
+    float aMax = 100.0f;
     return RandomSampler::randomFloat(aMin, aMax);
 }
 

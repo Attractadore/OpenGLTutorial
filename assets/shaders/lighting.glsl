@@ -110,4 +110,19 @@ float lightShadowing2D(sampler2DArrayShadow shadowMapArray, int index, vec3 frag
     return lightFactor / normFactor;
 }
 
+float lightShadowingCube(samplerCubeArrayShadow shadowCubeMapArray, int index, vec3 fragPos, mat4 lightTransform, float lightNear, float lightFar) {
+    float lightFactor = 0.0f;
+    float normFactor = 0.0f;
+    for (int i = 0; i < 9; i++) {
+        vec3 lsFragPos = (lightTransform * vec4(fragPos + offsets[i] * offsetScale, 1.0f)).xyz;
+        vec4 fragShadowTex = vec4(lsFragPos, index);
+        lsFragPos = abs(lsFragPos);
+        float z = max(lsFragPos.x, max(lsFragPos.y, lsFragPos.z));
+        float fragDepth = (lightNear / z - 1.0f) / (lightNear / lightFar - 1.0f);
+        lightFactor += weights[i] * texture(shadowCubeMapArray, fragShadowTex, fragDepth);
+        normFactor += weights[i];
+    }
+    return lightFactor / normFactor;
+}
+
 #endif

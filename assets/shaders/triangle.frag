@@ -1,4 +1,5 @@
 #version 330 core
+#extension GL_ARB_texture_cube_map_array : require
 #define MAX_POINT_LIGHTS 10
 #define MAX_DIR_LIGHTS 10
 #define MAX_SPOT_LIGHTS 10
@@ -36,6 +37,7 @@ lights;
 uniform vec3 cameraPos;
 uniform Material material;
 
+uniform samplerCubeArrayShadow pointLightShadowMapArray;
 uniform sampler2DArrayShadow spotLightShadowMapArray;
 uniform sampler2DArrayShadow dirLightShadowMapArray;
 
@@ -55,7 +57,9 @@ void main() {
 
     vec3 resColor = vec3(0.0f, 0.0f, 0.0f);
     for (int i = 0; i < min(lights.numPointLights, MAX_POINT_LIGHTS); i++) {
-        resColor += pointLightLighting(lights.pointLights[i], fragPos, fragNormal, cameraDir, fragMaterial, 1.0f);
+        PointLight pl = lights.pointLights[i];
+        resColor += pointLightLighting(pl, fragPos, fragNormal, cameraDir, fragMaterial,
+                                       lightShadowingCube(pointLightShadowMapArray, i, fragPos, lights.pointLightTransforms[i], pl.radius, 100.0f));
     }
     for (int i = 0; i < min(lights.numSpotLights, MAX_SPOT_LIGHTS); i++) {
         resColor += spotLightLighting(lights.spotLights[i], fragPos, fragNormal, cameraDir, fragMaterial,

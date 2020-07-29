@@ -344,11 +344,13 @@ void swapBuffers(int& readBufferIndex) {
     glDrawBuffer(GL_COLOR_ATTACHMENT0 + !readBufferIndex);
 }
 
-void drawShadowCasters(GLuint shadowProgram, const glm::mat4& lightTransform, GLuint cubeVAO, const std::vector<std::pair<glm::mat4, glm::mat3>>& cubeMatrices, int numCubeVertices, GLuint pyramidVAO, const std::vector<std::pair<glm::mat4, glm::mat3>>& pyramidMatrices, int numPyramidVertices) {
+void drawShadowCasters(GLuint shadowProgram, const std::vector<glm::mat4>& lightTransforms, GLuint cubeVAO, const std::vector<std::pair<glm::mat4, glm::mat3>>& cubeMatrices, int numCubeVertices, GLuint pyramidVAO, const std::vector<std::pair<glm::mat4, glm::mat3>>& pyramidMatrices, int numPyramidVertices) {
     glEnable(GL_CULL_FACE);
     glCullFace(GL_FRONT);
     glUseProgram(shadowProgram);
-    glUniformMatrix4fv(glGetUniformLocation(shadowProgram, "transform"), 1, GL_FALSE, glm::value_ptr(lightTransform));
+
+    glUniform1i(glGetUniformLocation(shadowProgram, "numLayers"), lightTransforms.size());
+    glUniformMatrix4fv(glGetUniformLocation(shadowProgram, "lightTransforms"), lightTransforms.size(), GL_FALSE, reinterpret_cast<const GLfloat*>(lightTransforms.data()));
 
     for (const auto& [m, _]: cubeMatrices) {
         glUniformMatrix4fv(glGetUniformLocation(shadowProgram, "model"), 1, GL_FALSE, glm::value_ptr(m));
@@ -392,9 +394,9 @@ int main() {
                   SPOT_LIGHT_SIZE = 96,
                   DIRECTIONAL_LIGHT_SIZE = 64;
 
-    int numPointLights = 5,
-        numSpotLights = 0 + 1,
-        numDirectionalLights = 0;
+    int numPointLights = 3,
+        numSpotLights = 3 + 1,
+        numDirectionalLights = 1;
 
     numPointLights = std::min(numPointLights, MAX_POINT_LIGHTS);
     numSpotLights = std::min(numSpotLights, MAX_SPOT_LIGHTS);
@@ -423,7 +425,8 @@ int main() {
          {-0.25f, 0.25f, 0.0f}};
     int MSAASamples = 4;
     float gammaValue = 2.2f;
-    constexpr int SHADOWMAP_RESOLUTION = 2048;
+    constexpr int SHADOWMAP_RESOLUTION = 1024;
+    constexpr int DIR_LIGHT_SHADOWMAP_RESOLUTION = SHADOWMAP_RESOLUTION * 8;
 
     int numCubesX = 10,
         numCubesY = numCubesX;
@@ -484,11 +487,10 @@ int main() {
         blurShaderProgram,
         cubeMapShaderProgram,
         snowShaderProgram,
-        shadowProgram,
+        shadowShaderProgram,
         depthVisualizationProgram;
     GLuint frameTextureArray;
-    std::vector<std::size_t> shadowMapArraySizes = {spotLights.size(), directionalLights.size()};
-    std::vector<GLuint> shadowMapArrays(shadowMapArraySizes.size());
+    std::vector<GLuint> shadowMapArrays(2);
     GLuint& spotLightShadowMapArray = shadowMapArrays[0];
     GLuint& directionalLightShadowMapArray = shadowMapArrays[1];
     GLuint pointLightShadowCubeMapArray;
@@ -534,7 +536,7 @@ int main() {
     GLuint& MSFBO = frameBuffers[1];
     GLuint& blitFBO = frameBuffers[2];
     GLuint& QRFBO = frameBuffers[3];
-    GLuint& directionalShadowMapFBO = frameBuffers[4];
+    GLuint& shadowMapFBO = frameBuffers[4];
 
     std::vector<GLuint> renderBuffers(3);
     GLuint& MSColorRenderBuffer = renderBuffers[0];
@@ -630,9 +632,12 @@ int main() {
     glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 
     glGenTextures(shadowMapArrays.size(), shadowMapArrays.data());
-    for (std::size_t i = 0; i < shadowMapArrays.size(); i++) {
-        glBindTexture(GL_TEXTURE_2D_ARRAY, shadowMapArrays[i]);
-        glTexImage3D(GL_TEXTURE_2D_ARRAY, 0, GL_DEPTH_COMPONENT, SHADOWMAP_RESOLUTION, SHADOWMAP_RESOLUTION, shadowMapArraySizes[i], 0, GL_DEPTH_COMPONENT, GL_UNSIGNED_BYTE, nullptr);
+    glBindTexture(GL_TEXTURE_2D_ARRAY, spotLightShadowMapArray);
+    glTexImage3D(GL_TEXTURE_2D_ARRAY, 0, GL_DEPTH_COMPONENT, SHADOWMAP_RESOLUTION, SHADOWMAP_RESOLUTION, numSpotLights, 0, GL_DEPTH_COMPONENT, GL_UNSIGNED_BYTE, nullptr);
+    glBindTexture(GL_TEXTURE_2D_ARRAY, directionalLightShadowMapArray);
+    glTexImage3D(GL_TEXTURE_2D_ARRAY, 0, GL_DEPTH_COMPONENT, DIR_LIGHT_SHADOWMAP_RESOLUTION, DIR_LIGHT_SHADOWMAP_RESOLUTION, numDirectionalLights, 0, GL_DEPTH_COMPONENT, GL_UNSIGNED_BYTE, nullptr);
+    for (auto shadowTex : shadowMapArrays) {
+        glBindTexture(GL_TEXTURE_2D_ARRAY, shadowTex);
         glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
         glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
         glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
@@ -695,8 +700,8 @@ int main() {
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, quarterResPPTextures[0], 0);
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1, GL_TEXTURE_2D, quarterResPPTextures[1], 0);
 
-    // Setup directional light shadowmap framebuffer
-    glBindFramebuffer(GL_FRAMEBUFFER, directionalShadowMapFBO);
+    // Setup shadow map framebuffer
+    glBindFramebuffer(GL_FRAMEBUFFER, shadowMapFBO);
     glDrawBuffer(GL_NONE);
     glReadBuffer(GL_NONE);
 
@@ -721,6 +726,7 @@ int main() {
         auto cubeMapFragmentShaderSource = loadShaderSource("assets/shaders/cube.frag");
         auto snowVertexShaderSource = loadShaderSource("assets/shaders/snow.vert");
         auto shadowVertexShaderSource = loadShaderSource("assets/shaders/shadow.vert");
+        auto shadowGeometryShaderSource = loadShaderSource("assets/shaders/shadow.geom");
         auto depthVisualizationFragmentShaderSource = loadShaderSource("assets/shaders/visualize_depth_map.frag");
 
         // Create cube shader program
@@ -810,9 +816,10 @@ int main() {
 
         glDeleteShader(screenRectVertexShader);
 
-        // Create directional light shadow shader program
+        // Create shadow shader program
         GLuint shadowVertexShader = createShader(GL_VERTEX_SHADER, shadowVertexShaderSource);
-        shadowProgram = createProgram({shadowVertexShader});
+        GLuint shadowGeometryShader = createShader(GL_GEOMETRY_SHADER, shadowGeometryShaderSource);
+        shadowShaderProgram = createProgram({shadowVertexShader, shadowGeometryShader});
         glDeleteShader(shadowVertexShader);
     }
 
@@ -980,7 +987,7 @@ int main() {
     glUniform1i(glGetUniformLocation(gammaCorrectionShaderProgram, "inputFrame"), 0);
     glUniform1f(glGetUniformLocation(gammaCorrectionShaderProgram, "correctionFactor"), 1.0f / gammaValue);
 
-    glUseProgram(shadowProgram);
+    glUseProgram(shadowShaderProgram);
 
     float forwardAxisValue, rightAxisValue, upAxisValue;
 
@@ -1121,9 +1128,10 @@ int main() {
 
         // Generate shadowmaps
 
-        glBindFramebuffer(GL_FRAMEBUFFER, directionalShadowMapFBO);
+        glBindFramebuffer(GL_FRAMEBUFFER, shadowMapFBO);
         glViewport(0, 0, SHADOWMAP_RESOLUTION, SHADOWMAP_RESOLUTION);
         std::vector<glm::mat4> pointLightTransformMatrices;
+        std::vector<glm::mat4> pointLightRenderTransformMatrices;
         std::vector<glm::mat4> spotLightTransformMatrices;
         std::vector<glm::mat4> directionalLightTransformMatrices;
         const std::vector<std::pair<glm::vec3, glm::vec3>> lightVectors = {
@@ -1133,42 +1141,45 @@ int main() {
             {{0.0f, -1.0f, 0.0f}, {0.0f, 0.0f, -1.0f}},
             {{0.0f, 0.0f, 1.0f}, {0.0f, -1.0f, 0.0f}},
             {{0.0f, 0.0f, -1.0f}, {0.0f, -1.0f, 0.0f}}};
-        for (int i = 0; i < numPointLights; i++) {
-            const auto& lightPos = pointLights[i].position;
-            float lightRadius = pointLights[i].radius;
+        for (const auto& pl : pointLights) {
+            const auto& lightPos = pl.position;
+            float lightRadius = pl.radius;
             glm::mat4 lightProjection = glm::perspective(glm::radians(90.0f), 1.0f, lightRadius, 100.0f);
-
-            for (int j = 0; j < 6; j++) {
-                glFramebufferTextureLayer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, pointLightShadowCubeMapArray, 0, 6 * i + j);
-                glClear(GL_DEPTH_BUFFER_BIT);
-                const auto& [lightDir, lightUp] = lightVectors[j];
+            for (const auto& [lightDir, lightUp]: lightVectors) {
                 glm::mat4 lightView = glm::lookAt(lightPos, lightPos + lightDir, lightUp);
                 glm::mat4 lightTransform = lightProjection * lightView;
-
-                drawShadowCasters(shadowProgram, lightTransform, cubeVAO, cubeMatrices, cubeVertexIndices.size(), pyramidVAO, pyramidMatrices, pyramidVertexIndices.size());
+                pointLightRenderTransformMatrices.push_back(lightTransform);
             }
             pointLightTransformMatrices.push_back(glm::translate(glm::mat4(1.0f), -lightPos));
         }
-
-        for (int i = 0; i < numSpotLights - !bFlashLight; i++) {
-            glFramebufferTextureLayer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, spotLightShadowMapArray, 0, i);
+        if (numPointLights) {
+            glFramebufferTexture(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, pointLightShadowCubeMapArray, 0);
             glClear(GL_DEPTH_BUFFER_BIT);
-            const auto& lightDir = spotLights[i].direction;
-            const auto& lightPos = spotLights[i].position;
-            float lightCone = spotLights[i].outerAngleCos;
-            float lightRadius = spotLights[i].radius;
+            drawShadowCasters(shadowShaderProgram, pointLightRenderTransformMatrices, cubeVAO, cubeMatrices, cubeVertexIndices.size(), pyramidVAO, pyramidMatrices, pyramidVertexIndices.size());
+        }
+
+        for (auto it = spotLights.begin(); it < spotLights.end() - !bFlashLight; it++) {
+            const auto& sl = *it;
+            const auto& lightDir = sl.direction;
+            const auto& lightPos = sl.position;
+            float lightCone = sl.outerAngleCos;
+            float lightRadius = sl.radius;
             glm::vec3 lightUp = calculateLightUp(lightDir);
             glm::mat4 lightView = glm::lookAt(lightPos, lightPos + lightDir, lightUp);
             glm::mat4 lightProjection = glm::perspective(2.0f * glm::acos(lightCone), 1.0f, lightRadius, 100.0f);
             glm::mat4 lightTransform = lightProjection * lightView;
             spotLightTransformMatrices.push_back(lightTransform);
-
-            drawShadowCasters(shadowProgram, lightTransform, cubeVAO, cubeMatrices, cubeVertexIndices.size(), pyramidVAO, pyramidMatrices, pyramidVertexIndices.size());
         }
-        for (int i = 0; i < numDirectionalLights; i++) {
-            glFramebufferTextureLayer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, directionalLightShadowMapArray, 0, i);
+        int numUsedSpotLights = std::max(numSpotLights - !bFlashLight, 0);
+        if (numUsedSpotLights) {
+            glFramebufferTexture(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, spotLightShadowMapArray, 0);
             glClear(GL_DEPTH_BUFFER_BIT);
-            const auto& lightDir = directionalLights[i].direction;
+            drawShadowCasters(shadowShaderProgram, spotLightTransformMatrices, cubeVAO, cubeMatrices, cubeVertexIndices.size(), pyramidVAO, pyramidMatrices, pyramidVertexIndices.size());
+        }
+
+        glViewport(0, 0, DIR_LIGHT_SHADOWMAP_RESOLUTION, DIR_LIGHT_SHADOWMAP_RESOLUTION);
+        for (const auto& dl : directionalLights) {
+            const auto& lightDir = dl.direction;
             glm::vec3 lightUp = calculateLightUp(lightDir);
             glm::mat4 lightView = glm::lookAt(camera->getCameraPos(), camera->getCameraPos() + lightDir, lightUp);
             float verticalFOV = CameraManager::getVerticalFOV();
@@ -1190,9 +1201,13 @@ int main() {
             glm::mat4 lightProjection = glm::ortho(minCoords.x, maxCoords.x, minCoords.y, maxCoords.y, -maxCoords.z, -minCoords.z);
             glm::mat4 lightTransform = lightProjection * lightView;
             directionalLightTransformMatrices.push_back(lightTransform);
-
-            drawShadowCasters(shadowProgram, lightTransform, cubeVAO, cubeMatrices, cubeVertexIndices.size(), pyramidVAO, pyramidMatrices, pyramidVertexIndices.size());
         }
+        if (numDirectionalLights) {
+            glFramebufferTexture(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, directionalLightShadowMapArray, 0);
+            glClear(GL_DEPTH_BUFFER_BIT);
+            drawShadowCasters(shadowShaderProgram, directionalLightTransformMatrices, cubeVAO, cubeMatrices, cubeVertexIndices.size(), pyramidVAO, pyramidMatrices, pyramidVertexIndices.size());
+        }
+
         glBindBuffer(GL_UNIFORM_BUFFER, lightUBO);
         int offset = LIGHT_BUFFER_SIZE - 16 - 64 * MAX_DIRECTIONAL_LIGHTS;
         glBufferSubData(GL_UNIFORM_BUFFER, offset, sizeof(glm::mat4) * directionalLightTransformMatrices.size(), directionalLightTransformMatrices.data());

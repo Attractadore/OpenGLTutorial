@@ -48,7 +48,7 @@ const vec3 offsets[9] = vec3[](
 
 const float weights[9] = float[](0.5, 0.5, 0.5f, 0.5f, 1.0f, 0.5, 0.5f, 0.5f, 0.5f);
 
-const float offsetScale = 0.01f;
+const float offsetScale = 0.05f;
 
 // Functions
 

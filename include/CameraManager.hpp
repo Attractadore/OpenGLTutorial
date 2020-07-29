@@ -31,6 +31,9 @@ public:
     static float getVerticalFOV() {
         return CameraManager::verticalFOV;
     }
+    static float getNearPlane() {
+        return CameraManager::nearPlane;
+    }
     static float getFarPlane() {
         return CameraManager::farPlane;
     }

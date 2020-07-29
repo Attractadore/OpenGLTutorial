@@ -12,8 +12,10 @@
 #include <assimp/Importer.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
+#include <glm/gtx/string_cast.hpp>
 
 #include <fstream>
+#include <iostream>
 #include <regex>
 
 struct Material {
@@ -372,7 +374,7 @@ glm::vec3 calculateLightUp(const glm::vec3& lightDir) {
     glm::vec3 lightUp = {0.0f, 0.0f, 1.0f};
     glm::vec3 lightLeft = glm::cross(lightUp, lightDir);
     if (glm::length(lightLeft) > 0.0f) {
-        lightUp = glm::cross(lightDir, lightLeft);
+        lightUp = glm::normalize(glm::cross(lightDir, lightLeft));
     } else {
         lightUp = {0.0f, 1.0f, 0.0f};
     }
@@ -394,8 +396,8 @@ int main() {
                   SPOT_LIGHT_SIZE = 96,
                   DIRECTIONAL_LIGHT_SIZE = 64;
 
-    int numPointLights = 3,
-        numSpotLights = 3 + 1,
+    int numPointLights = 0,
+        numSpotLights = 0 + 1,
         numDirectionalLights = 1;
 
     numPointLights = std::min(numPointLights, MAX_POINT_LIGHTS);
@@ -426,7 +428,7 @@ int main() {
     int MSAASamples = 4;
     float gammaValue = 2.2f;
     constexpr int SHADOWMAP_RESOLUTION = 1024;
-    constexpr int DIR_LIGHT_SHADOWMAP_RESOLUTION = SHADOWMAP_RESOLUTION * 8;
+    constexpr int DIR_LIGHT_SHADOWMAP_RESOLUTION = SHADOWMAP_RESOLUTION * 4;
 
     int numCubesX = 10,
         numCubesY = numCubesX;
@@ -636,7 +638,7 @@ int main() {
     glTexImage3D(GL_TEXTURE_2D_ARRAY, 0, GL_DEPTH_COMPONENT, SHADOWMAP_RESOLUTION, SHADOWMAP_RESOLUTION, numSpotLights, 0, GL_DEPTH_COMPONENT, GL_UNSIGNED_BYTE, nullptr);
     glBindTexture(GL_TEXTURE_2D_ARRAY, directionalLightShadowMapArray);
     glTexImage3D(GL_TEXTURE_2D_ARRAY, 0, GL_DEPTH_COMPONENT, DIR_LIGHT_SHADOWMAP_RESOLUTION, DIR_LIGHT_SHADOWMAP_RESOLUTION, numDirectionalLights, 0, GL_DEPTH_COMPONENT, GL_UNSIGNED_BYTE, nullptr);
-    for (auto shadowTex : shadowMapArrays) {
+    for (auto shadowTex: shadowMapArrays) {
         glBindTexture(GL_TEXTURE_2D_ARRAY, shadowTex);
         glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
         glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
@@ -1141,7 +1143,7 @@ int main() {
             {{0.0f, -1.0f, 0.0f}, {0.0f, 0.0f, -1.0f}},
             {{0.0f, 0.0f, 1.0f}, {0.0f, -1.0f, 0.0f}},
             {{0.0f, 0.0f, -1.0f}, {0.0f, -1.0f, 0.0f}}};
-        for (const auto& pl : pointLights) {
+        for (const auto& pl: pointLights) {
             const auto& lightPos = pl.position;
             float lightRadius = pl.radius;
             glm::mat4 lightProjection = glm::perspective(glm::radians(90.0f), 1.0f, lightRadius, 100.0f);
@@ -1177,45 +1179,80 @@ int main() {
             drawShadowCasters(shadowShaderProgram, spotLightTransformMatrices, cubeVAO, cubeMatrices, cubeVertexIndices.size(), pyramidVAO, pyramidMatrices, pyramidVertexIndices.size());
         }
 
+        float l;
+        {
+            float a, b, c, d, h;
+            h = CameraManager::getFarPlane() - CameraManager::getNearPlane();
+            float _ = glm::tan(glm::radians(CameraManager::getHorizontalFOV() / 2.0f));
+            a = CameraManager::getNearPlane() * _;
+            b = CameraManager::getFarPlane() * _;
+            _ = glm::tan(glm::radians(CameraManager::getVerticalFOV() / 2.0f));
+            c = CameraManager::getNearPlane() * _;
+            d = CameraManager::getFarPlane() * _;
+
+            float l1 = 2 * std::sqrt((b * b + d * d));
+            float l2 = std::sqrt(h * h + std::pow(std::sqrt(b * b + d * d) + std::sqrt(a * a + c * c), 2));
+            l = std::max(l1, l2) * static_cast<float>(DIR_LIGHT_SHADOWMAP_RESOLUTION + 1) / static_cast<float>(DIR_LIGHT_SHADOWMAP_RESOLUTION);
+        }
+
         glViewport(0, 0, DIR_LIGHT_SHADOWMAP_RESOLUTION, DIR_LIGHT_SHADOWMAP_RESOLUTION);
-        for (const auto& dl : directionalLights) {
+        for (const auto& dl: directionalLights) {
             const auto& lightDir = dl.direction;
             glm::vec3 lightUp = calculateLightUp(lightDir);
-            glm::mat4 lightView = glm::lookAt(camera->getCameraPos(), camera->getCameraPos() + lightDir, lightUp);
-            float verticalFOV = CameraManager::getVerticalFOV();
-            float horizontalFOV = CameraManager::getHorizontalFOV();
-            glm::vec3 cameraLookPoint = camera->getCameraPos() + camera->getCameraForwardVector() * CameraManager::getFarPlane();
-            glm::vec3 upVectorScaled = glm::tan(glm::radians(verticalFOV / 2.0f)) * CameraManager::getFarPlane() * camera->getCameraUpVector();
-            glm::vec3 rightVectorScaled = glm::tan(glm::radians(horizontalFOV / 2.0f)) * CameraManager::getFarPlane() * camera->getCameraRightVector();
-            std::vector<glm::vec3> cameraFrustrumPoints =
-                {cameraLookPoint + upVectorScaled + rightVectorScaled,
-                 cameraLookPoint + upVectorScaled - rightVectorScaled,
-                 cameraLookPoint - upVectorScaled + rightVectorScaled,
-                 cameraLookPoint - upVectorScaled - rightVectorScaled};
-            std::for_each(cameraFrustrumPoints.begin(), cameraFrustrumPoints.end(), [&lightView](auto& e) { e = lightView * glm::vec4(e, 1.0f); });
-            glm::vec3 minCoords(0.0f);
-            glm::vec3 maxCoords(0.0f);
-            minCoords = glm::min(minCoords, glm::min(cameraFrustrumPoints[0], glm::min(cameraFrustrumPoints[1], glm::min(cameraFrustrumPoints[2], cameraFrustrumPoints[3]))));
-            maxCoords = glm::max(maxCoords, glm::max(cameraFrustrumPoints[0], glm::max(cameraFrustrumPoints[1], glm::max(cameraFrustrumPoints[2], cameraFrustrumPoints[3]))));
-            maxCoords.z += CameraManager::getFarPlane();
-            glm::mat4 lightProjection = glm::ortho(minCoords.x, maxCoords.x, minCoords.y, maxCoords.y, -maxCoords.z, -minCoords.z);
+            glm::mat4 lightView = glm::lookAt(glm::vec3(0.0f), lightDir, lightUp);
+
+            glm::mat4 cameraProjViewInverse = glm::inverse(projection * view);
+            float minX = std::numeric_limits<float>::min(),
+                  minY = minX,
+                  minZ = minX;
+            float maxZ = std::numeric_limits<float>::min();
+
+            for (float x: {-1.0f, 1.0f}) {
+                for (float y: {-1.0f, 1.0f}) {
+                    for (float z: {-1.0f, 1.0f}) {
+                        glm::vec4 frustrumWorld = cameraProjViewInverse * glm::vec4(x, y, z, 1.0f);
+                        frustrumWorld /= frustrumWorld.w;
+                        glm::vec3 frustrumLight = lightView * frustrumWorld;
+                        frustrumLight.z *= -1;
+                        minX = std::min(minX, frustrumLight.x);
+                        minY = std::min(minY, frustrumLight.y);
+                        minZ = std::min(minZ, frustrumLight.z);
+                        maxZ = std::max(maxZ, frustrumLight.z);
+                    }
+                }
+            }
+            glm::vec2 clampedCoords(minX, minY);
+            float step = l / DIR_LIGHT_SHADOWMAP_RESOLUTION;
+            clampedCoords = glm::floor(clampedCoords / step) * step;
+            minX = clampedCoords.x;
+            minY = clampedCoords.y;
+
+            glm::mat4 lightProjection = glm::ortho(minX, minX + l, minY, minY + l, minZ, maxZ);
             glm::mat4 lightTransform = lightProjection * lightView;
             directionalLightTransformMatrices.push_back(lightTransform);
         }
         if (numDirectionalLights) {
+            glEnable(GL_DEPTH_CLAMP);
             glFramebufferTexture(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, directionalLightShadowMapArray, 0);
             glClear(GL_DEPTH_BUFFER_BIT);
             drawShadowCasters(shadowShaderProgram, directionalLightTransformMatrices, cubeVAO, cubeMatrices, cubeVertexIndices.size(), pyramidVAO, pyramidMatrices, pyramidVertexIndices.size());
+            glDisable(GL_DEPTH_CLAMP);
         }
-
-        glBindBuffer(GL_UNIFORM_BUFFER, lightUBO);
-        int offset = LIGHT_BUFFER_SIZE - 16 - 64 * MAX_DIRECTIONAL_LIGHTS;
-        glBufferSubData(GL_UNIFORM_BUFFER, offset, sizeof(glm::mat4) * directionalLightTransformMatrices.size(), directionalLightTransformMatrices.data());
-        offset -= 64 * MAX_SPOT_LIGHTS;
-        glBufferSubData(GL_UNIFORM_BUFFER, offset, sizeof(glm::mat4) * spotLightTransformMatrices.size(), spotLightTransformMatrices.data());
-        offset -= 64 * MAX_POINT_LIGHTS;
-        glBufferSubData(GL_UNIFORM_BUFFER, offset, sizeof(glm::mat4) * pointLightTransformMatrices.size(), pointLightTransformMatrices.data());
         glViewport(0, 0, windowW, windowH);
+
+        {
+            int bufferSize = 64 * (MAX_DIRECTIONAL_LIGHTS + MAX_SPOT_LIGHTS + MAX_POINT_LIGHTS);
+            int bufferOffset = LIGHT_BUFFER_SIZE - 16 - bufferSize;
+            std::vector<std::byte> ptr(bufferSize);
+            int writeOffset = 0;
+            std::memcpy(ptr.data() + writeOffset, pointLightTransformMatrices.data(), sizeof(glm::mat4) * pointLightTransformMatrices.size());
+            writeOffset += 64 * MAX_POINT_LIGHTS;
+            std::memcpy(ptr.data() + writeOffset, spotLightTransformMatrices.data(), sizeof(glm::mat4) * spotLightTransformMatrices.size());
+            writeOffset += 64 * MAX_SPOT_LIGHTS;
+            std::memcpy(ptr.data() + writeOffset, directionalLightTransformMatrices.data(), sizeof(glm::mat4) * directionalLightTransformMatrices.size());
+            glBindBuffer(GL_UNIFORM_BUFFER, lightUBO);
+            glBufferSubData(GL_UNIFORM_BUFFER, bufferOffset, bufferSize, ptr.data());
+        }
 
         // Start drawing
 

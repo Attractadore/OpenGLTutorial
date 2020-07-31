@@ -1,8 +1,6 @@
 #ifndef LIGHTING_GLSL
 #define LIGHTING_GLSL
 
-// Structs
-
 struct LightColor {  // 48 bytes
     vec3 ambient;
     vec3 diffuse;
@@ -34,23 +32,6 @@ struct MaterialColor {
     vec3 specularColor;
     float shininess;
 };
-
-const vec3 offsets[9] = vec3[](
-    vec3(1.0f, 1.0f, 1.0f),
-    vec3(-1.0f, 1.0f, 1.0f),
-    vec3(-1.0f, -1.0f, 1.0f),
-    vec3(1.0f, -1.0f, 1.0f),
-    vec3(0.0f),
-    vec3(1.0f, 1.0f, -1.0f),
-    vec3(-1.0f, 1.0f, -1.0f),
-    vec3(-1.0f, -1.0f, -1.0f),
-    vec3(1.0f, -1.0f, -1.0f));
-
-const float weights[9] = float[](0.5, 0.5, 0.5f, 0.5f, 1.0f, 0.5, 0.5f, 0.5f, 0.5f);
-
-const float offsetScale = 0.05f;
-
-// Functions
 
 float lightDistanceAtt(float distance, float radius) {
     return pow(radius / max(distance, radius), 2.0f);
@@ -98,31 +79,34 @@ vec3 fragLSSTrans(vec3 fragPos, mat4 lightTransform) {
     return lsFragPos.xyz * 0.5f + 0.5f;
 }
 
-float lightShadowing2D(sampler2DArrayShadow shadowMapArray, int index, vec3 fragPos, mat4 lightTransform) {
-    float lightFactor = 0.0f;
-    float normFactor = 0.0f;
-    for (int i = 0; i < 9; i++) {
-        vec3 lssFragPos = fragLSSTrans(fragPos + offsets[i] * offsetScale, lightTransform);
-        vec4 fragShadowTex = vec4(lssFragPos.xy, index, lssFragPos.z);
-        lightFactor += weights[i] * texture(shadowMapArray, fragShadowTex);
-        normFactor += weights[i];
-    }
-    return lightFactor / normFactor;
+float fragCubeDepth(vec3 fragPos, mat4 lightTransform, float lightNear, float lightFar) {
+    vec3 lsFragPos = abs((lightTransform * vec4(fragPos, 1.0f)).xyz);
+    float z = max(lsFragPos.x, max(lsFragPos.y, lsFragPos.z));
+    return (lightNear / z - 1.0f) / (lightNear / lightFar - 1.0f);
 }
 
-float lightShadowingCube(samplerCubeArrayShadow shadowCubeMapArray, int index, vec3 fragPos, mat4 lightTransform, float lightNear, float lightFar) {
-    float lightFactor = 0.0f;
-    float normFactor = 0.0f;
-    for (int i = 0; i < 9; i++) {
-        vec3 lsFragPos = (lightTransform * vec4(fragPos + offsets[i] * offsetScale, 1.0f)).xyz;
-        vec4 fragShadowTex = vec4(lsFragPos, index);
-        lsFragPos = abs(lsFragPos);
-        float z = max(lsFragPos.x, max(lsFragPos.y, lsFragPos.z));
-        float fragDepth = (lightNear / z - 1.0f) / (lightNear / lightFar - 1.0f);
-        lightFactor += weights[i] * texture(shadowCubeMapArray, fragShadowTex, fragDepth);
-        normFactor += weights[i];
-    }
-    return lightFactor / normFactor;
+vec3 calculateNormalOffset(vec3 fragNormal, float fragDepth, vec3 lightDir, float minSampleSize, float maxSampleSize) {
+    float offsetScale = sin(acos(dot(fragNormal, lightDir))) * mix(minSampleSize, maxSampleSize, pow(fragDepth, 50.0f)) / sqrt(2.0f) + 0.01f;
+    return offsetScale * fragNormal;
+}
+
+float lightShadowing2D(sampler2DArrayShadow shadowMapArray, int index, vec3 fragPos, vec3 fragNormal, vec3 lightDir, mat4 lightTransform, float minSampleSize, float maxSampleSize) {
+    float fragDepth = fragLSSTrans(fragPos, lightTransform).z;
+    vec3 fragOffset = calculateNormalOffset(fragNormal, fragDepth, lightDir, minSampleSize, maxSampleSize);
+
+    vec3 lssFragSamplePos = fragLSSTrans(fragPos + fragOffset, lightTransform);
+    vec4 fragShadowTex = vec4(lssFragSamplePos.xy, index, lssFragSamplePos.z);
+    return texture(shadowMapArray, fragShadowTex);
+}
+
+float lightShadowingCube(samplerCubeArrayShadow shadowCubeMapArray, int index, vec3 fragPos, vec3 fragNormal, vec3 lightDir, mat4 lightTransform, float lightNear, float lightFar, float minSampleSize, float maxSampleSize) {
+    float fragDepth = fragCubeDepth(fragPos, lightTransform, lightNear, lightFar);
+    vec3 fragOffset = calculateNormalOffset(fragNormal, fragDepth, lightDir, minSampleSize, maxSampleSize);
+
+    vec3 lsFragSamplePos = (lightTransform * vec4(fragPos + fragOffset, 1.0f)).xyz;
+    float fragSampleDepth = fragCubeDepth(lsFragSamplePos, mat4(1.0f), lightNear, lightFar);
+    vec4 fragShadowTex = vec4(lsFragSamplePos, index);
+    return texture(shadowCubeMapArray, fragShadowTex, fragSampleDepth);
 }
 
 #endif

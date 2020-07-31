@@ -348,7 +348,6 @@ void swapBuffers(int& readBufferIndex) {
 
 void drawShadowCasters(GLuint shadowProgram, const std::vector<glm::mat4>& lightTransforms, GLuint cubeVAO, const std::vector<std::pair<glm::mat4, glm::mat3>>& cubeMatrices, int numCubeVertices, GLuint pyramidVAO, const std::vector<std::pair<glm::mat4, glm::mat3>>& pyramidMatrices, int numPyramidVertices) {
     glEnable(GL_CULL_FACE);
-    glCullFace(GL_FRONT);
     glUseProgram(shadowProgram);
 
     glUniform1i(glGetUniformLocation(shadowProgram, "numLayers"), lightTransforms.size());
@@ -366,7 +365,6 @@ void drawShadowCasters(GLuint shadowProgram, const std::vector<glm::mat4>& light
         glDrawElements(GL_TRIANGLES, numPyramidVertices, GL_UNSIGNED_INT, nullptr);
     }
 
-    glCullFace(GL_BACK);
     glDisable(GL_CULL_FACE);
 }
 
@@ -1136,6 +1134,11 @@ int main() {
         std::vector<glm::mat4> pointLightRenderTransformMatrices;
         std::vector<glm::mat4> spotLightTransformMatrices;
         std::vector<glm::mat4> directionalLightTransformMatrices;
+        std::vector<float> pointLightMinSampleSizes;
+        std::vector<float> pointLightMaxSampleSizes;
+        std::vector<float> spotLightMinSampleSizes;
+        std::vector<float> spotLightMaxSampleSizes;
+        std::vector<float> dirLightSampleSizes;
         const std::vector<std::pair<glm::vec3, glm::vec3>> lightVectors = {
             {{1.0f, 0.0f, 0.0f}, {0.0f, -1.0f, 0.0f}},
             {{-1.0f, 0.0f, 0.0f}, {0.0f, -1.0f, 0.0f}},
@@ -1153,6 +1156,8 @@ int main() {
                 pointLightRenderTransformMatrices.push_back(lightTransform);
             }
             pointLightTransformMatrices.push_back(glm::translate(glm::mat4(1.0f), -lightPos));
+            pointLightMinSampleSizes.push_back(2.0f * lightRadius / SHADOWMAP_RESOLUTION);
+            pointLightMaxSampleSizes.push_back(2.0f * 100.0f / SHADOWMAP_RESOLUTION);
         }
         if (numPointLights) {
             glFramebufferTexture(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, pointLightShadowCubeMapArray, 0);
@@ -1168,9 +1173,14 @@ int main() {
             float lightRadius = sl.radius;
             glm::vec3 lightUp = calculateLightUp(lightDir);
             glm::mat4 lightView = glm::lookAt(lightPos, lightPos + lightDir, lightUp);
-            glm::mat4 lightProjection = glm::perspective(2.0f * glm::acos(lightCone), 1.0f, lightRadius, 100.0f);
+            float lightFOV = 2.0f * glm::acos(lightCone);
+            float lightMinSampleSize = 2.0f * glm::tan(lightFOV / 2.0f) * lightRadius / SHADOWMAP_RESOLUTION;
+            float lightMaxSampleSize = lightMinSampleSize * 100.0f / lightRadius;
+            glm::mat4 lightProjection = glm::perspective(lightFOV, 1.0f, lightRadius, 100.0f);
             glm::mat4 lightTransform = lightProjection * lightView;
             spotLightTransformMatrices.push_back(lightTransform);
+            spotLightMinSampleSizes.push_back(lightMinSampleSize);
+            spotLightMaxSampleSizes.push_back(lightMaxSampleSize);
         }
         int numUsedSpotLights = std::max(numSpotLights - !bFlashLight, 0);
         if (numUsedSpotLights) {
@@ -1230,6 +1240,7 @@ int main() {
             glm::mat4 lightProjection = glm::ortho(minX, minX + l, minY, minY + l, minZ, maxZ);
             glm::mat4 lightTransform = lightProjection * lightView;
             directionalLightTransformMatrices.push_back(lightTransform);
+            dirLightSampleSizes.push_back(l / DIR_LIGHT_SHADOWMAP_RESOLUTION);
         }
         if (numDirectionalLights) {
             glEnable(GL_DEPTH_CLAMP);
@@ -1275,6 +1286,12 @@ int main() {
         glUseProgram(cubeShaderProgram);
 
         glUniform3fv(glGetUniformLocation(cubeShaderProgram, "cameraPos"), 1, glm::value_ptr(camera->getCameraPos()));
+        glUniform1fv(glGetUniformLocation(cubeShaderProgram, "pointLightMinSampleSizes"), pointLightMinSampleSizes.size(), pointLightMinSampleSizes.data());
+        glUniform1fv(glGetUniformLocation(cubeShaderProgram, "pointLightMaxSampleSizes"), pointLightMaxSampleSizes.size(), pointLightMaxSampleSizes.data());
+        glUniform1fv(glGetUniformLocation(cubeShaderProgram, "spotLightMinSampleSizes"), spotLightMinSampleSizes.size(), spotLightMinSampleSizes.data());
+        glUniform1fv(glGetUniformLocation(cubeShaderProgram, "spotLightMaxSampleSizes"), spotLightMaxSampleSizes.size(), spotLightMaxSampleSizes.data());
+        glUniform1fv(glGetUniformLocation(cubeShaderProgram, "dirLightSampleSizes"), dirLightSampleSizes.size(), dirLightSampleSizes.data());
+
         glActiveTexture(GL_TEXTURE10);
         glBindTexture(GL_TEXTURE_CUBE_MAP_ARRAY_ARB, pointLightShadowCubeMapArray);
         glActiveTexture(GL_TEXTURE11);
@@ -1397,6 +1414,12 @@ int main() {
             glUseProgram(snowShaderProgram);
             glUniform1f(glGetUniformLocation(snowShaderProgram, "time"), glfwGetTime());
             glUniform3fv(glGetUniformLocation(snowShaderProgram, "cameraPos"), 1, glm::value_ptr(camera->getCameraPos()));
+            glUniform1fv(glGetUniformLocation(snowShaderProgram, "pointLightMinSampleSizes"), pointLightMinSampleSizes.size(), pointLightMinSampleSizes.data());
+            glUniform1fv(glGetUniformLocation(snowShaderProgram, "pointLightMaxSampleSizes"), pointLightMaxSampleSizes.size(), pointLightMaxSampleSizes.data());
+            glUniform1fv(glGetUniformLocation(snowShaderProgram, "spotLightMinSampleSizes"), spotLightMinSampleSizes.size(), spotLightMinSampleSizes.data());
+            glUniform1fv(glGetUniformLocation(snowShaderProgram, "spotLightMaxSampleSizes"), spotLightMaxSampleSizes.size(), spotLightMaxSampleSizes.data());
+            glUniform1fv(glGetUniformLocation(snowShaderProgram, "dirLightSampleSizes"), dirLightSampleSizes.size(), dirLightSampleSizes.data());
+
             glBindVertexArray(snowVAO);
             glDrawElementsInstanced(GL_TRIANGLES, sphereVertexIndices.size(), GL_UNSIGNED_INT, nullptr, numSnowParticles);
         }

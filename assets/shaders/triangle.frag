@@ -34,6 +34,12 @@ layout(std140) uniform LightsBlock {
 }
 lights;
 
+uniform float pointLightMinSampleSizes[MAX_POINT_LIGHTS];
+uniform float pointLightMaxSampleSizes[MAX_POINT_LIGHTS];
+uniform float spotLightMinSampleSizes[MAX_SPOT_LIGHTS];
+uniform float spotLightMaxSampleSizes[MAX_SPOT_LIGHTS];
+uniform float dirLightSampleSizes[MAX_DIR_LIGHTS];
+
 uniform vec3 cameraPos;
 uniform Material material;
 
@@ -58,16 +64,21 @@ void main() {
     vec3 resColor = vec3(0.0f, 0.0f, 0.0f);
     for (int i = 0; i < min(lights.numPointLights, MAX_POINT_LIGHTS); i++) {
         PointLight pl = lights.pointLights[i];
+        vec3 lightDir = normalize(pl.position - fragPos);
         resColor += pointLightLighting(pl, fragPos, fragNormal, cameraDir, fragMaterial,
-                                       lightShadowingCube(pointLightShadowMapArray, i, fragPos, lights.pointLightTransforms[i], pl.radius, 100.0f));
+                                       lightShadowingCube(pointLightShadowMapArray, i, fragPos, fragNormal, lightDir, lights.pointLightTransforms[i], pl.radius, 100.0f, pointLightMinSampleSizes[i], pointLightMaxSampleSizes[i]));
     }
     for (int i = 0; i < min(lights.numSpotLights, MAX_SPOT_LIGHTS); i++) {
-        resColor += spotLightLighting(lights.spotLights[i], fragPos, fragNormal, cameraDir, fragMaterial,
-                                      lightShadowing2D(spotLightShadowMapArray, i, fragPos, lights.spotLightTransforms[i]));
+        SpotLight sl = lights.spotLights[i];
+        vec3 lightDir = normalize(sl.position - fragPos);
+        resColor += spotLightLighting(sl, fragPos, fragNormal, cameraDir, fragMaterial,
+                                      lightShadowing2D(spotLightShadowMapArray, i, fragPos, fragNormal, lightDir, lights.spotLightTransforms[i], spotLightMinSampleSizes[i], spotLightMaxSampleSizes[i]));
     }
     for (int i = 0; i < min(lights.numDirLights, MAX_DIR_LIGHTS); i++) {
-        resColor += dirLightLighting(lights.dirLights[i], fragPos, fragNormal, cameraDir, fragMaterial,
-                                     lightShadowing2D(dirLightShadowMapArray, i, fragPos, lights.dirLightTransforms[i]));
+        DirLight dl = lights.dirLights[i];
+        vec3 lightDir = normalize(-dl.direction);
+        resColor += dirLightLighting(dl, fragPos, fragNormal, cameraDir, fragMaterial,
+                                     lightShadowing2D(dirLightShadowMapArray, i, fragPos, fragNormal, lightDir, lights.dirLightTransforms[i], dirLightSampleSizes[i], dirLightSampleSizes[i]));
     }
     fColor = vec4(resColor, alpha);
 }

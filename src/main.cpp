@@ -425,8 +425,15 @@ int main() {
          {-0.25f, 0.25f, 0.0f}};
     int MSAASamples = 4;
     float gammaValue = 2.2f;
-    constexpr int SHADOWMAP_RESOLUTION = 1024;
-    constexpr int DIR_LIGHT_SHADOWMAP_RESOLUTION = SHADOWMAP_RESOLUTION * 4;
+    constexpr int POINT_LIGHT_SHADOWMAP_RESOLUTION = 1024;
+    constexpr int SPOT_LIGHT_SHADOWMAP_RESOLUTION = 1024;
+    constexpr int DIR_LIGHT_SHADOWMAP_RESOLUTION = 2048;
+    constexpr int DIR_LIGHT_NUM_CASCADES = 4;
+
+    int numDirLightCascades = 4,
+        numPointLightCascades = 1,
+        numSpotLightCascades = 1;
+    numDirLightCascades = std::clamp(numDirLightCascades, 1, DIR_LIGHT_NUM_CASCADES);
 
     int numCubesX = 10,
         numCubesY = numCubesX;
@@ -633,9 +640,9 @@ int main() {
 
     glGenTextures(shadowMapArrays.size(), shadowMapArrays.data());
     glBindTexture(GL_TEXTURE_2D_ARRAY, spotLightShadowMapArray);
-    glTexImage3D(GL_TEXTURE_2D_ARRAY, 0, GL_DEPTH_COMPONENT, SHADOWMAP_RESOLUTION, SHADOWMAP_RESOLUTION, numSpotLights, 0, GL_DEPTH_COMPONENT, GL_UNSIGNED_BYTE, nullptr);
+    glTexImage3D(GL_TEXTURE_2D_ARRAY, 0, GL_DEPTH_COMPONENT, SPOT_LIGHT_SHADOWMAP_RESOLUTION, SPOT_LIGHT_SHADOWMAP_RESOLUTION, numSpotLights * numSpotLightCascades, 0, GL_DEPTH_COMPONENT, GL_UNSIGNED_BYTE, nullptr);
     glBindTexture(GL_TEXTURE_2D_ARRAY, directionalLightShadowMapArray);
-    glTexImage3D(GL_TEXTURE_2D_ARRAY, 0, GL_DEPTH_COMPONENT, DIR_LIGHT_SHADOWMAP_RESOLUTION, DIR_LIGHT_SHADOWMAP_RESOLUTION, numDirectionalLights, 0, GL_DEPTH_COMPONENT, GL_UNSIGNED_BYTE, nullptr);
+    glTexImage3D(GL_TEXTURE_2D_ARRAY, 0, GL_DEPTH_COMPONENT, DIR_LIGHT_SHADOWMAP_RESOLUTION, DIR_LIGHT_SHADOWMAP_RESOLUTION, numDirectionalLights * numDirLightCascades, 0, GL_DEPTH_COMPONENT, GL_UNSIGNED_BYTE, nullptr);
     for (auto shadowTex: shadowMapArrays) {
         glBindTexture(GL_TEXTURE_2D_ARRAY, shadowTex);
         glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
@@ -649,7 +656,7 @@ int main() {
 
     glGenTextures(1, &pointLightShadowCubeMapArray);
     glBindTexture(GL_TEXTURE_CUBE_MAP_ARRAY_ARB, pointLightShadowCubeMapArray);
-    glTexImage3D(GL_TEXTURE_CUBE_MAP_ARRAY_ARB, 0, GL_DEPTH_COMPONENT, SHADOWMAP_RESOLUTION, SHADOWMAP_RESOLUTION, 6 * numPointLights, 0, GL_DEPTH_COMPONENT, GL_UNSIGNED_BYTE, nullptr);
+    glTexImage3D(GL_TEXTURE_CUBE_MAP_ARRAY_ARB, 0, GL_DEPTH_COMPONENT, POINT_LIGHT_SHADOWMAP_RESOLUTION, POINT_LIGHT_SHADOWMAP_RESOLUTION, 6 * numPointLights * numPointLightCascades, 0, GL_DEPTH_COMPONENT, GL_UNSIGNED_BYTE, nullptr);
     glTexParameteri(GL_TEXTURE_CUBE_MAP_ARRAY_ARB, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_CUBE_MAP_ARRAY_ARB, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_CUBE_MAP_ARRAY_ARB, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
@@ -896,7 +903,7 @@ int main() {
     constexpr int LIGHT_BUFFER_SIZE = POINT_LIGHT_SIZE * MAX_POINT_LIGHTS +
                                       SPOT_LIGHT_SIZE * MAX_SPOT_LIGHTS +
                                       DIRECTIONAL_LIGHT_SIZE * MAX_DIRECTIONAL_LIGHTS +
-                                      64 * (MAX_POINT_LIGHTS + MAX_SPOT_LIGHTS + MAX_DIRECTIONAL_LIGHTS) +
+                                      64 * (MAX_POINT_LIGHTS + MAX_SPOT_LIGHTS + MAX_DIRECTIONAL_LIGHTS * DIR_LIGHT_NUM_CASCADES) +
                                       16;
     glBindBuffer(GL_UNIFORM_BUFFER, lightUBO);
     glBufferData(GL_UNIFORM_BUFFER, LIGHT_BUFFER_SIZE, nullptr, GL_DYNAMIC_DRAW);
@@ -1128,8 +1135,6 @@ int main() {
 
         // Generate shadowmaps
 
-        glBindFramebuffer(GL_FRAMEBUFFER, shadowMapFBO);
-        glViewport(0, 0, SHADOWMAP_RESOLUTION, SHADOWMAP_RESOLUTION);
         std::vector<glm::mat4> pointLightTransformMatrices;
         std::vector<glm::mat4> pointLightRenderTransformMatrices;
         std::vector<glm::mat4> spotLightTransformMatrices;
@@ -1156,10 +1161,14 @@ int main() {
                 pointLightRenderTransformMatrices.push_back(lightTransform);
             }
             pointLightTransformMatrices.push_back(glm::translate(glm::mat4(1.0f), -lightPos));
-            pointLightMinSampleSizes.push_back(2.0f * lightRadius / SHADOWMAP_RESOLUTION);
-            pointLightMaxSampleSizes.push_back(2.0f * 100.0f / SHADOWMAP_RESOLUTION);
+            float lightMinSampleSize = 2.0f * lightRadius / POINT_LIGHT_SHADOWMAP_RESOLUTION;
+            float lightMaxSampleSize = lightMinSampleSize * 100.0f / lightRadius;
+            pointLightMinSampleSizes.push_back(lightMinSampleSize);
+            pointLightMaxSampleSizes.push_back(lightMaxSampleSize);
         }
         if (numPointLights) {
+            glViewport(0, 0, POINT_LIGHT_SHADOWMAP_RESOLUTION, POINT_LIGHT_SHADOWMAP_RESOLUTION);
+            glBindFramebuffer(GL_FRAMEBUFFER, shadowMapFBO);
             glFramebufferTexture(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, pointLightShadowCubeMapArray, 0);
             glClear(GL_DEPTH_BUFFER_BIT);
             drawShadowCasters(shadowShaderProgram, pointLightRenderTransformMatrices, cubeVAO, cubeMatrices, cubeVertexIndices.size(), pyramidVAO, pyramidMatrices, pyramidVertexIndices.size());
@@ -1174,7 +1183,7 @@ int main() {
             glm::vec3 lightUp = calculateLightUp(lightDir);
             glm::mat4 lightView = glm::lookAt(lightPos, lightPos + lightDir, lightUp);
             float lightFOV = 2.0f * glm::acos(lightCone);
-            float lightMinSampleSize = 2.0f * glm::tan(lightFOV / 2.0f) * lightRadius / SHADOWMAP_RESOLUTION;
+            float lightMinSampleSize = 2.0f * glm::tan(lightFOV / 2.0f) * lightRadius / SPOT_LIGHT_SHADOWMAP_RESOLUTION;
             float lightMaxSampleSize = lightMinSampleSize * 100.0f / lightRadius;
             glm::mat4 lightProjection = glm::perspective(lightFOV, 1.0f, lightRadius, 100.0f);
             glm::mat4 lightTransform = lightProjection * lightView;
@@ -1184,66 +1193,98 @@ int main() {
         }
         int numUsedSpotLights = std::max(numSpotLights - !bFlashLight, 0);
         if (numUsedSpotLights) {
+            glViewport(0, 0, SPOT_LIGHT_SHADOWMAP_RESOLUTION, SPOT_LIGHT_SHADOWMAP_RESOLUTION);
+            glBindFramebuffer(GL_FRAMEBUFFER, shadowMapFBO);
             glFramebufferTexture(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, spotLightShadowMapArray, 0);
             glClear(GL_DEPTH_BUFFER_BIT);
             drawShadowCasters(shadowShaderProgram, spotLightTransformMatrices, cubeVAO, cubeMatrices, cubeVertexIndices.size(), pyramidVAO, pyramidMatrices, pyramidVertexIndices.size());
         }
 
-        float l;
+        float cascadePlaneRelation = glm::pow(CameraManager::getFarPlane() / CameraManager::getNearPlane(), 1.0f / numDirLightCascades);
+        std::vector<std::pair<glm::mat4, float>> cascadeProperties;
+        glm::vec4 cascadeNearPlanes, cascadeFarPlanes;
+        auto convertDepth = [](float d) {
+            return (d - CameraManager::getNearPlane()) / (CameraManager::getFarPlane() - CameraManager::getNearPlane()) * CameraManager::getFarPlane() / d;
+        };
+        for (int i = 0; i < numDirLightCascades; i++) {
+            float n = CameraManager::getNearPlane() * glm::pow(cascadePlaneRelation, static_cast<float>(i));
+            float f = CameraManager::getNearPlane() * glm::pow(cascadePlaneRelation, static_cast<float>(i + 1));
+            cascadeNearPlanes[i] = n;
+            cascadeFarPlanes[i] = f;
+        }
         {
-            float a, b, c, d, h;
-            h = CameraManager::getFarPlane() - CameraManager::getNearPlane();
+            glm::vec4 adjustedCascadeNearPlanes = cascadeNearPlanes, adjustedCascadeFarPlanes = cascadeFarPlanes;
+            for (int i = 0; i < numDirLightCascades - 1; i++) {
+                adjustedCascadeFarPlanes[i] += glm::min(1.0f, (cascadeFarPlanes[i + 1] - cascadeNearPlanes[i + 1]) / 10.f);
+                adjustedCascadeNearPlanes[i + 1] -= glm::min(1.0f, (cascadeFarPlanes[i] - cascadeNearPlanes[i]) / 10.0f);
+            }
+            cascadeNearPlanes = adjustedCascadeNearPlanes;
+            cascadeFarPlanes = adjustedCascadeFarPlanes;
+        }
+        for (int i = 0; i < numDirLightCascades; i++) {
+            float a, b, c, d, h, n, f;
+            n = cascadeNearPlanes[i];
+            f = cascadeFarPlanes[i];
+            h = f - n;
             float _ = glm::tan(glm::radians(CameraManager::getHorizontalFOV() / 2.0f));
-            a = CameraManager::getNearPlane() * _;
-            b = CameraManager::getFarPlane() * _;
+            a = n * _;
+            b = f * _;
             _ = glm::tan(glm::radians(CameraManager::getVerticalFOV() / 2.0f));
-            c = CameraManager::getNearPlane() * _;
-            d = CameraManager::getFarPlane() * _;
+            c = n * _;
+            d = f * _;
 
             float l1 = 2 * std::sqrt((b * b + d * d));
             float l2 = std::sqrt(h * h + std::pow(std::sqrt(b * b + d * d) + std::sqrt(a * a + c * c), 2));
-            l = std::max(l1, l2) * static_cast<float>(DIR_LIGHT_SHADOWMAP_RESOLUTION + 1) / static_cast<float>(DIR_LIGHT_SHADOWMAP_RESOLUTION);
+            float l = std::max(l1, l2) * static_cast<float>(DIR_LIGHT_SHADOWMAP_RESOLUTION + 1) / static_cast<float>(DIR_LIGHT_SHADOWMAP_RESOLUTION);
+            glm::mat4 cascadeCameraProjection = glm::perspective(glm::radians(CameraManager::getVerticalFOV()), CameraManager::getAspectRatio(), n, f);
+            cascadeProperties.emplace_back(cascadeCameraProjection, l);
+
+            cascadeNearPlanes[i] = convertDepth(n);
+            cascadeFarPlanes[i] = convertDepth(f);
         }
 
-        glViewport(0, 0, DIR_LIGHT_SHADOWMAP_RESOLUTION, DIR_LIGHT_SHADOWMAP_RESOLUTION);
         for (const auto& dl: directionalLights) {
             const auto& lightDir = dl.direction;
             glm::vec3 lightUp = calculateLightUp(lightDir);
             glm::mat4 lightView = glm::lookAt(glm::vec3(0.0f), lightDir, lightUp);
 
-            glm::mat4 cameraProjViewInverse = glm::inverse(projection * view);
-            float minX = std::numeric_limits<float>::min(),
-                  minY = minX,
-                  minZ = minX;
-            float maxZ = std::numeric_limits<float>::min();
+            for (const auto& [cascadeCameraProjection, cascadeBoundingBoxSize]: cascadeProperties) {
+                glm::mat4 cascadeCameraProjViewInverse = glm::inverse(cascadeCameraProjection * view);
+                float minX = std::numeric_limits<float>::max(),
+                      minY = minX,
+                      minZ = minX;
+                float maxZ = std::numeric_limits<float>::lowest();
 
-            for (float x: {-1.0f, 1.0f}) {
-                for (float y: {-1.0f, 1.0f}) {
-                    for (float z: {-1.0f, 1.0f}) {
-                        glm::vec4 frustrumWorld = cameraProjViewInverse * glm::vec4(x, y, z, 1.0f);
-                        frustrumWorld /= frustrumWorld.w;
-                        glm::vec3 frustrumLight = lightView * frustrumWorld;
-                        frustrumLight.z *= -1;
-                        minX = std::min(minX, frustrumLight.x);
-                        minY = std::min(minY, frustrumLight.y);
-                        minZ = std::min(minZ, frustrumLight.z);
-                        maxZ = std::max(maxZ, frustrumLight.z);
+                for (float x: {-1.0f, 1.0f}) {
+                    for (float y: {-1.0f, 1.0f}) {
+                        for (float z: {-1.0f, 1.0f}) {
+                            glm::vec4 frustrumWorld = cascadeCameraProjViewInverse * glm::vec4(x, y, z, 1.0f);
+                            frustrumWorld /= frustrumWorld.w;
+                            glm::vec3 frustrumLight = lightView * frustrumWorld;
+                            frustrumLight.z *= -1;
+                            minX = std::min(minX, frustrumLight.x);
+                            minY = std::min(minY, frustrumLight.y);
+                            minZ = std::min(minZ, frustrumLight.z);
+                            maxZ = std::max(maxZ, frustrumLight.z);
+                        }
                     }
                 }
-            }
-            glm::vec2 clampedCoords(minX, minY);
-            float step = l / DIR_LIGHT_SHADOWMAP_RESOLUTION;
-            clampedCoords = glm::floor(clampedCoords / step) * step;
-            minX = clampedCoords.x;
-            minY = clampedCoords.y;
+                glm::vec2 clampedCoords(minX, minY);
+                float step = cascadeBoundingBoxSize / DIR_LIGHT_SHADOWMAP_RESOLUTION;
+                clampedCoords = glm::floor(clampedCoords / step) * step;
+                minX = clampedCoords.x;
+                minY = clampedCoords.y;
 
-            glm::mat4 lightProjection = glm::ortho(minX, minX + l, minY, minY + l, minZ, maxZ);
-            glm::mat4 lightTransform = lightProjection * lightView;
-            directionalLightTransformMatrices.push_back(lightTransform);
-            dirLightSampleSizes.push_back(l / DIR_LIGHT_SHADOWMAP_RESOLUTION);
+                glm::mat4 lightProjection = glm::ortho(minX, minX + cascadeBoundingBoxSize, minY, minY + cascadeBoundingBoxSize, minZ, maxZ);
+                glm::mat4 lightTransform = lightProjection * lightView;
+                directionalLightTransformMatrices.push_back(lightTransform);
+                dirLightSampleSizes.push_back(cascadeBoundingBoxSize / DIR_LIGHT_SHADOWMAP_RESOLUTION);
+            }
         }
         if (numDirectionalLights) {
+            glViewport(0, 0, DIR_LIGHT_SHADOWMAP_RESOLUTION, DIR_LIGHT_SHADOWMAP_RESOLUTION);
             glEnable(GL_DEPTH_CLAMP);
+            glBindFramebuffer(GL_FRAMEBUFFER, shadowMapFBO);
             glFramebufferTexture(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, directionalLightShadowMapArray, 0);
             glClear(GL_DEPTH_BUFFER_BIT);
             drawShadowCasters(shadowShaderProgram, directionalLightTransformMatrices, cubeVAO, cubeMatrices, cubeVertexIndices.size(), pyramidVAO, pyramidMatrices, pyramidVertexIndices.size());
@@ -1252,7 +1293,7 @@ int main() {
         glViewport(0, 0, windowW, windowH);
 
         {
-            int bufferSize = 64 * (MAX_DIRECTIONAL_LIGHTS + MAX_SPOT_LIGHTS + MAX_POINT_LIGHTS);
+            int bufferSize = 64 * (MAX_DIRECTIONAL_LIGHTS * DIR_LIGHT_NUM_CASCADES + MAX_SPOT_LIGHTS + MAX_POINT_LIGHTS);
             int bufferOffset = LIGHT_BUFFER_SIZE - 16 - bufferSize;
             std::vector<std::byte> ptr(bufferSize);
             int writeOffset = 0;
@@ -1291,6 +1332,9 @@ int main() {
         glUniform1fv(glGetUniformLocation(cubeShaderProgram, "spotLightMinSampleSizes"), spotLightMinSampleSizes.size(), spotLightMinSampleSizes.data());
         glUniform1fv(glGetUniformLocation(cubeShaderProgram, "spotLightMaxSampleSizes"), spotLightMaxSampleSizes.size(), spotLightMaxSampleSizes.data());
         glUniform1fv(glGetUniformLocation(cubeShaderProgram, "dirLightSampleSizes"), dirLightSampleSizes.size(), dirLightSampleSizes.data());
+        glUniform4fv(glGetUniformLocation(cubeShaderProgram, "dirLightCascadeNearDepths"), 1, glm::value_ptr(cascadeNearPlanes));
+        glUniform4fv(glGetUniformLocation(cubeShaderProgram, "dirLightCascadeFarDepths"), 1, glm::value_ptr(cascadeFarPlanes));
+        glUniform1i(glGetUniformLocation(cubeShaderProgram, "dirLightNumCascades"), numDirLightCascades);
 
         glActiveTexture(GL_TEXTURE10);
         glBindTexture(GL_TEXTURE_CUBE_MAP_ARRAY_ARB, pointLightShadowCubeMapArray);
@@ -1419,6 +1463,9 @@ int main() {
             glUniform1fv(glGetUniformLocation(snowShaderProgram, "spotLightMinSampleSizes"), spotLightMinSampleSizes.size(), spotLightMinSampleSizes.data());
             glUniform1fv(glGetUniformLocation(snowShaderProgram, "spotLightMaxSampleSizes"), spotLightMaxSampleSizes.size(), spotLightMaxSampleSizes.data());
             glUniform1fv(glGetUniformLocation(snowShaderProgram, "dirLightSampleSizes"), dirLightSampleSizes.size(), dirLightSampleSizes.data());
+            glUniform4fv(glGetUniformLocation(snowShaderProgram, "dirLightCascadeNearDepths"), 1, glm::value_ptr(cascadeNearPlanes));
+            glUniform4fv(glGetUniformLocation(snowShaderProgram, "dirLightCascadeFarDepths"), 1, glm::value_ptr(cascadeFarPlanes));
+            glUniform1i(glGetUniformLocation(snowShaderProgram, "dirLightNumCascades"), numDirLightCascades);
 
             glBindVertexArray(snowVAO);
             glDrawElementsInstanced(GL_TRIANGLES, sphereVertexIndices.size(), GL_UNSIGNED_INT, nullptr, numSnowParticles);

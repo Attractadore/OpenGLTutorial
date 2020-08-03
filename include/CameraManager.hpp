@@ -37,6 +37,9 @@ public:
     static float getFarPlane() {
         return CameraManager::farPlane;
     }
+    static float getAspectRatio() {
+        return CameraManager::aspectRatio;
+    }
 
     static void addCameraPitchInput(float degrees);
     static void addCameraYawInput(float degrees);

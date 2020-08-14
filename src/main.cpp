@@ -408,9 +408,9 @@ int main() {
 
     bool bFlashLight = false,
          bGreyScale = false,
-         bBloom = true,
+         bBloom = false,
          bTAA = false,
-         bMSAA = true,
+         bMSAA = false,
          bSkybox = false,
          bBorder = false,
          bSnow = false,
@@ -425,9 +425,9 @@ int main() {
          {-0.25f, 0.25f, 0.0f}};
     int MSAASamples = 4;
     float gammaValue = 2.2f;
-    constexpr int POINT_LIGHT_SHADOWMAP_RESOLUTION = 1024;
-    constexpr int SPOT_LIGHT_SHADOWMAP_RESOLUTION = 1024;
-    constexpr int DIR_LIGHT_SHADOWMAP_RESOLUTION = 2048;
+    constexpr int POINT_LIGHT_SHADOWMAP_RESOLUTION = 512;
+    constexpr int SPOT_LIGHT_SHADOWMAP_RESOLUTION = 512;
+    constexpr int DIR_LIGHT_SHADOWMAP_RESOLUTION = 1024;
     constexpr int DIR_LIGHT_NUM_CASCADES = 4;
 
     int numDirLightCascades = 4,

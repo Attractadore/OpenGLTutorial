@@ -1559,11 +1559,12 @@ int main() {
             swapBuffers(quarterResReadIndex);
 
             glUseProgram(blurShaderProgram);
-            glUniform1f(glGetUniformLocation(blurShaderProgram, "strideX"), 2.0f / windowW);
-            glUniform1f(glGetUniformLocation(blurShaderProgram, "strideY"), 2.0f / windowH);
+            glUniform1i(glGetUniformLocation(blurShaderProgram, "inputFrame"), 0);
+            glUniform1i(glGetUniformLocation(blurShaderProgram, "filterWidth"), 7);
 
             for (auto horizontal: {0, 1}) {
                 glUniform1i(glGetUniformLocation(blurShaderProgram, "bHorizontal"), horizontal);
+            glUniform1f(glGetUniformLocation(blurShaderProgram, "stride"), 2.0f / (horizontal ? windowW : windowH));
                 glBindTexture(GL_TEXTURE_2D, quarterResPPTextures[quarterResReadIndex]);
                 glDrawElements(GL_TRIANGLES, rectVertexIndices.size(), GL_UNSIGNED_INT, nullptr);
                 swapBuffers(quarterResReadIndex);

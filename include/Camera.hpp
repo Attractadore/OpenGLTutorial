@@ -15,8 +15,9 @@ public:
 
     void addLocationOffset(glm::vec3 offset);
 
-private:
     glm::vec3 cameraPos = {0.0f, 0.0f, 0.0f};
+
+private:
     glm::vec3 cameraDefaultForwardVector = {1.0f, 0.0f, 0.0f};
     glm::vec3 cameraDefaultRightVector = {0.0f, -1.0f, 0.0f};
     glm::vec3 cameraDefaultUpVector = {0.0f, 0.0f, 1.0f};

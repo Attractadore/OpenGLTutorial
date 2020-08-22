@@ -13,7 +13,7 @@ float CameraManager::mouseSensitivityY = 0.05f;
 bool CameraManager::bInvertMouseX = false;
 bool CameraManager::bInvertMouseY = false;
 bool CameraManager::bStartup = true;
-float CameraManager::aspectRatio = 1.0f;
+float CameraManager::aspectRatio = 16.0f / 9.0f;
 float CameraManager::horizontalFOV = 90.0f;
 float CameraManager::verticalFOV = CameraManager::horizontalFOV / aspectRatio;
 float CameraManager::nearPlane = 0.1f;
@@ -127,8 +127,8 @@ void CameraManager::disableCameraLook() {
 
 void CameraManager::initialize(int viewportW, int viewportH) {
     glfwInit();
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 6);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
     glfwWindowHint(GLFW_OPENGL_DEBUG_CONTEXT, GLFW_TRUE);
     glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
@@ -142,6 +142,18 @@ void CameraManager::terminate() {
     CameraManager::currentCamera.reset();
     CameraManager::currentWindow = nullptr;
     glfwTerminate();
+}
+
+void CameraManager::processEvents() {
+    if (currentWindow == nullptr) {
+        return;
+    }
+    if (glfwGetKey(currentWindow, GLFW_KEY_ESCAPE) == GLFW_PRESS) {
+        CameraManager::disableCameraLook();
+    }
+    if (glfwGetMouseButton(currentWindow, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS) {
+        CameraManager::enableCameraLook();
+    }
 }
 
 GLFWwindow* CameraManager::getWindow() {

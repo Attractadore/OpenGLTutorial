@@ -50,6 +50,8 @@ public:
     static void initialize(int viewportW, int viewportH);
     static void terminate();
 
+    static void processEvents();
+
     static GLFWwindow* getWindow();
 
     static bool bInvertMouseX;

@@ -1,10 +1,10 @@
-#version 330 core
+#version 460 core
 layout(location = 0) in vec3 vPos;
 
 out vec3 fPos;
 
-uniform mat4 projection;
-uniform mat4 view;
+layout(location = 0) uniform mat4 projection;
+layout(location = 1) uniform mat4 view;
 
 void main() {
     fPos = vPos;

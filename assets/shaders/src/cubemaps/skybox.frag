@@ -1,9 +1,9 @@
-#version 330 core
+#version 460 core
 in vec3 fPos;
 
 out vec4 fColor;
 
-uniform samplerCube cubeMap;
+layout(binding = 0) uniform samplerCube cubeMap;
 
 void main() {
     fColor = texture(cubeMap, fPos);

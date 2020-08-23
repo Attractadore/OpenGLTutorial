@@ -156,6 +156,32 @@ void CameraManager::processEvents() {
     }
 }
 
+glm::vec3 CameraManager::getCameraMovementInput() {
+    glm::vec3 cameraMovementInput = glm::vec3(0.0f);
+    if (CameraManager::currentWindow != nullptr and !CameraManager::currentCamera.expired()) {
+        auto camera = CameraManager::currentCamera.lock();
+        if (glfwGetKey(CameraManager::currentWindow, GLFW_KEY_W) == GLFW_PRESS) {
+            cameraMovementInput += camera->getCameraForwardVector();
+        }
+        if (glfwGetKey(CameraManager::currentWindow, GLFW_KEY_S) == GLFW_PRESS) {
+            cameraMovementInput -= camera->getCameraForwardVector();
+        }
+        if (glfwGetKey(CameraManager::currentWindow, GLFW_KEY_D) == GLFW_PRESS) {
+            cameraMovementInput += camera->getCameraRightVector();
+        }
+        if (glfwGetKey(CameraManager::currentWindow, GLFW_KEY_A) == GLFW_PRESS) {
+            cameraMovementInput -= camera->getCameraRightVector();
+        }
+        if (glfwGetKey(CameraManager::currentWindow, GLFW_KEY_F) == GLFW_PRESS) {
+            cameraMovementInput += camera->getCameraUpVector();
+        }
+        if (glfwGetKey(CameraManager::currentWindow, GLFW_KEY_V) == GLFW_PRESS) {
+            cameraMovementInput -= camera->getCameraUpVector();
+        }
+    }
+    return cameraMovementInput;
+}
+
 GLFWwindow* CameraManager::getWindow() {
     return CameraManager::currentWindow;
 }

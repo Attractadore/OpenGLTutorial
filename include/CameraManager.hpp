@@ -51,6 +51,7 @@ public:
     static void terminate();
 
     static void processEvents();
+    static glm::vec3 getCameraMovementInput();
 
     static GLFWwindow* getWindow();
 

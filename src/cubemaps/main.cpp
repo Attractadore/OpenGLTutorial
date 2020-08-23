@@ -9,7 +9,6 @@
 
 #include <GLFW/glfw3.h>
 #include <glm/gtc/type_ptr.hpp>
-#include <glm/gtx/string_cast.hpp>
 
 int main() {
     std::filesystem::path assetsPath = "assets";
@@ -33,14 +32,13 @@ int main() {
 
     glEnable(GL_DEBUG_OUTPUT);
     glEnable(GL_DEBUG_OUTPUT_SYNCHRONOUS);
-    if (glIsEnabled(GL_DEBUG_OUTPUT)) {
-        glDebugMessageCallback(debugFunction, nullptr);
-    }
+    glDebugMessageCallback(debugFunction, nullptr);
     glEnable(GL_TEXTURE_CUBE_MAP_SEAMLESS);
     glEnable(GL_DEPTH_TEST);
     glDepthFunc(GL_LEQUAL);
     glEnable(GL_FRAMEBUFFER_SRGB);
 
+    float cubeRotateSpeed = glm::radians(360.0f) / 60.0f;
     std::array<GLuint, 2> cubeBuffers;
     GLuint& cubeVBO = cubeBuffers[0];
     GLuint& cubeEBO = cubeBuffers[1];
@@ -77,15 +75,18 @@ int main() {
         GLuint skyboxVertexShader = createShaderGLSL(GL_VERTEX_SHADER, shaderSrcPath / "skybox.vert");
         GLuint skyboxFragmentShader = createShaderGLSL(GL_FRAGMENT_SHADER, shaderSrcPath / "skybox.frag");
         skyboxShaderProgram = createProgram({skyboxVertexShader, skyboxFragmentShader});
+        glDeleteShader(skyboxVertexShader);
+        glDeleteShader(skyboxFragmentShader);
     }
     GLuint mirrorBoxShaderProgram;
     {
         GLuint mirrorBoxVertexShader = createShaderGLSL(GL_VERTEX_SHADER, shaderSrcPath / "mirror.vert");
         GLuint mirrorBoxFragmentShader = createShaderGLSL(GL_FRAGMENT_SHADER, shaderSrcPath / "mirror.frag");
         mirrorBoxShaderProgram = createProgram({mirrorBoxVertexShader, mirrorBoxFragmentShader});
+        glDeleteShader(mirrorBoxVertexShader);
+        glDeleteShader(mirrorBoxFragmentShader);
     }
 
-    glm::vec3 cameraMovementInput;
     double currentTime = 0;
     double previousTime;
     auto window = CameraManager::getWindow();
@@ -96,26 +97,7 @@ int main() {
 
         CameraManager::processEvents();
 
-        cameraMovementInput = glm::vec3(0.0f);
-        if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS) {
-            cameraMovementInput += camera->getCameraForwardVector();
-        }
-        if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS) {
-            cameraMovementInput -= camera->getCameraForwardVector();
-        }
-        if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS) {
-            cameraMovementInput += camera->getCameraRightVector();
-        }
-        if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS) {
-            cameraMovementInput -= camera->getCameraRightVector();
-        }
-        if (glfwGetKey(window, GLFW_KEY_F) == GLFW_PRESS) {
-            cameraMovementInput += camera->getCameraUpVector();
-        }
-        if (glfwGetKey(window, GLFW_KEY_V) == GLFW_PRESS) {
-            cameraMovementInput -= camera->getCameraUpVector();
-        }
-
+        glm::vec3 cameraMovementInput = CameraManager::getCameraMovementInput();
         if (glm::length(cameraMovementInput) > 0.0f) {
             cameraMovementInput = glm::normalize(cameraMovementInput);
             camera->cameraPos += (deltaTime * cameraSpeed) * cameraMovementInput;
@@ -127,7 +109,7 @@ int main() {
         glm::mat4 view = CameraManager::getViewMatrix();
         glm::mat4 projection = CameraManager::getProjectionMatrix();
 
-        glm::mat4 mirrorCubeModel = glm::rotate(glm::mat4(1.0f), float(currentTime / 10.0f), glm::vec3(0.0f, -1.0f, 0.0f));
+        glm::mat4 mirrorCubeModel = glm::rotate(glm::mat4(1.0f), float(currentTime * cubeRotateSpeed), glm::vec3(0.0f, -1.0f, 0.0f));
         glm::mat3 mirrorCubeNormal = glm::mat3(mirrorCubeModel);
 
         glProgramUniformMatrix4fv(mirrorBoxShaderProgram, 0, 1, GL_FALSE, glm::value_ptr(projection));
@@ -153,4 +135,12 @@ int main() {
         glfwSwapBuffers(window);
         glfwPollEvents();
     }
+
+    glDeleteProgram(skyboxShaderProgram);
+    glDeleteSamplers(1, &skyboxSampler);
+    glDeleteTextures(1, &skyboxCubeMap);
+    glDeleteVertexArrays(1, &cubeVAO);
+    glDeleteBuffers(1, &cubeVBO);
+    glDeleteBuffers(1, &cubeEBO);
+    CameraManager::terminate();
 }

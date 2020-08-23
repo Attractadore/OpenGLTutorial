@@ -34,9 +34,7 @@ int main() {
 
     glEnable(GL_DEBUG_OUTPUT);
     glEnable(GL_DEBUG_OUTPUT_SYNCHRONOUS);
-    if (glIsEnabled(GL_DEBUG_OUTPUT)) {
-        glDebugMessageCallback(debugFunction, nullptr);
-    }
+    glDebugMessageCallback(debugFunction, nullptr);
     glEnable(GL_DEPTH_TEST);
     glEnable(GL_FRAMEBUFFER_SRGB);
     glEnable(GL_CULL_FACE);
@@ -106,6 +104,8 @@ int main() {
         GLuint diffuseVertexShader = createShaderGLSL(GL_VERTEX_SHADER, shaderSrcPath / "diffuse.vert");
         GLuint diffuseFragmentShader = createShaderGLSL(GL_FRAGMENT_SHADER, shaderSrcPath / "diffuse.frag");
         diffuseShaderProgram = createProgram({diffuseVertexShader, diffuseFragmentShader});
+        glDeleteShader(diffuseVertexShader);
+        glDeleteShader(diffuseFragmentShader);
     }
 
     std::vector<glm::vec3> windowPositions = {
@@ -114,7 +114,7 @@ int main() {
         {-2.0f, 2.0f, 0.0f},
         {2.0f, -2.0f, 0.0f},
         {-2.0f, -2.0f, 0.0f}};
-    auto distCompare = [&camera](const glm::vec3& rhs, const glm::vec3& lhs) {
+    auto distSort = [&camera](const glm::vec3& rhs, const glm::vec3& lhs) {
         glm::vec3 rhsDist = rhs - camera->cameraPos;
         glm::vec3 lhsDist = lhs - camera->cameraPos;
         return glm::dot(rhsDist, rhsDist) > glm::dot(lhsDist, lhsDist);
@@ -142,7 +142,7 @@ int main() {
             camera->cameraPos += (deltaTime * cameraSpeed) * cameraMovementInput;
         }
 
-        std::sort(windowPositions.begin(), windowPositions.end(), distCompare);
+        std::sort(windowPositions.begin(), windowPositions.end(), distSort);
 
         glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -185,4 +185,20 @@ int main() {
         glfwSwapBuffers(window);
         glfwPollEvents();
     }
+
+    glDeleteProgram(diffuseShaderProgram);
+    glDeleteSamplers(1, &clampSampler);
+    glDeleteSamplers(1, &wrapSampler);
+    glDeleteTextures(1, &diffuseTexture);
+    glDeleteTextures(1, &windowTexture);
+    glDeleteVertexArrays(1, &cubeVAO);
+    glDeleteVertexArrays(1, &planeVAO);
+    glDeleteVertexArrays(1, &groundVAO);
+    glDeleteBuffers(1, &cubeVBO);
+    glDeleteBuffers(1, &cubeEBO);
+    glDeleteBuffers(1, &planeVBO);
+    glDeleteBuffers(1, &planeEBO);
+    glDeleteBuffers(1, &groundVBO);
+    glDeleteBuffers(1, &groundEBO);
+    CameraManager::terminate();
 }

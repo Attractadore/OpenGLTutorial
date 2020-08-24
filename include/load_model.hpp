@@ -23,4 +23,4 @@ struct MeshData {
 
 MeshData loadMesh(const std::filesystem::path& scenePath, std::size_t meshIndex = 0);
 
-void storeMesh(GLuint VAO, GLuint VBO, GLuint EBO, const MeshData& mesh);
+void storeMesh(GLuint VAO, GLuint VBO, GLuint EBO);

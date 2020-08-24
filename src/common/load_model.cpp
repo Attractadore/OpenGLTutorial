@@ -40,9 +40,7 @@ MeshData loadMesh(const std::filesystem::path& scenePath, std::size_t meshIndex)
     return newMeshData;
 }
 
-void storeMesh(GLuint VAO, GLuint VBO, GLuint EBO, const MeshData& mesh) {
-    glNamedBufferStorage(VBO, sizeof(MeshVertex) * mesh.vertices.size(), mesh.vertices.data(), 0);
-    glNamedBufferStorage(EBO, sizeof(GLuint) * mesh.indices.size(), mesh.indices.data(), 0);
+void storeMesh(GLuint VAO, GLuint VBO, GLuint EBO) {
     glVertexArrayElementBuffer(VAO, EBO);
     glVertexArrayVertexBuffer(VAO, 0, VBO, 0, sizeof(MeshVertex));
     {

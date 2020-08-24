@@ -50,7 +50,9 @@ int main() {
     {
         MeshData cubeMesh = loadMesh(meshesPath / "cube.obj");
         numCubeElements = cubeMesh.indices.size();
-        storeMesh(cubeVAO, cubeVBO, cubeEBO, cubeMesh);
+        glNamedBufferStorage(cubeVBO, sizeof(MeshVertex) * cubeMesh.vertices.size(), cubeMesh.vertices.data(), 0);
+        glNamedBufferStorage(cubeEBO, sizeof(GLuint) * cubeMesh.indices.size(), cubeMesh.indices.data(), 0);
+        storeMesh(cubeVAO, cubeVBO, cubeEBO);
     }
 
     std::array<GLuint, 2> planeBuffers;
@@ -63,7 +65,9 @@ int main() {
     {
         MeshData planeMesh = loadMesh(meshesPath / "transparentplane.obj");
         numPlaneElements = planeMesh.indices.size();
-        storeMesh(planeVAO, planeVBO, planeEBO, planeMesh);
+        glNamedBufferStorage(planeVBO, sizeof(MeshVertex) * planeMesh.vertices.size(), planeMesh.vertices.data(), 0);
+        glNamedBufferStorage(planeEBO, sizeof(GLuint) * planeMesh.indices.size(), planeMesh.indices.data(), 0);
+        storeMesh(planeVAO, planeVBO, planeEBO);
     }
 
     std::array<GLuint, 2> groundBuffers;
@@ -76,7 +80,9 @@ int main() {
     {
         MeshData groundMesh = loadMesh(meshesPath / "circularplane.obj");
         numGroundElements = groundMesh.indices.size();
-        storeMesh(groundVAO, groundVBO, groundEBO, groundMesh);
+        glNamedBufferStorage(groundVBO, sizeof(MeshVertex) * groundMesh.vertices.size(), groundMesh.vertices.data(), 0);
+        glNamedBufferStorage(groundEBO, sizeof(GLuint) * groundMesh.indices.size(), groundMesh.indices.data(), 0);
+        storeMesh(groundVAO, groundVBO, groundEBO);
     }
 
     GLuint diffuseTexture;

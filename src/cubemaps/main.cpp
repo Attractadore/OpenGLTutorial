@@ -49,7 +49,9 @@ int main() {
     {
         MeshData cubeMesh = loadMesh(meshesPath / "cube.obj");
         numCubeElements = cubeMesh.indices.size();
-        storeMesh(cubeVAO, cubeVBO, cubeEBO, cubeMesh);
+        glNamedBufferStorage(cubeVBO, sizeof(MeshVertex) * cubeMesh.vertices.size(), cubeMesh.vertices.data(), 0);
+        glNamedBufferStorage(cubeEBO, sizeof(GLuint) * cubeMesh.indices.size(), cubeMesh.indices.data(), 0);
+        storeMesh(cubeVAO, cubeVBO, cubeEBO);
     }
 
     GLuint skyboxCubeMap;

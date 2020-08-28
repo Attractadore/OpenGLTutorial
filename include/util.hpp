@@ -5,6 +5,6 @@
 #include <vector>
 
 template<typename T>
-void storeVectorGLBuffer(GLuint buffer, const std::vector<T>& vec, GLbitfield storage_bits = 0){
+inline void storeVectorGLBuffer(GLuint buffer, const std::vector<T>& vec, GLbitfield storage_bits = 0){
     glNamedBufferStorage(buffer, sizeof(T) * vec.size(), vec.data(), storage_bits);
 }

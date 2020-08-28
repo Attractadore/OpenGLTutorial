@@ -39,16 +39,14 @@ int main() {
     float cubeRotateSpeed = glm::radians(360.0f) / 60.0f;
     MeshGLRepr cubeMesh = createMeshGLRepr(meshesPath / "cube.obj");
 
-    GLuint skyboxCubeMap;
-    glCreateTextures(GL_TEXTURE_CUBE_MAP, 1, &skyboxCubeMap);
-    loadTextureCubeMap(skyboxCubeMap,
-                       {texturePath / "skybox/right.png",
-                        texturePath / "skybox/left.png",
-                        texturePath / "skybox/bottom.png",
-                        texturePath / "skybox/top.png",
-                        texturePath / "skybox/back.png",
-                        texturePath / "skybox/front.png"},
-                       GL_SRGB8_ALPHA8, GL_RGBA, GL_UNSIGNED_BYTE);
+    GLuint skyboxCubeMap = createTextureCubeMap(
+        {texturePath / "skybox/right.png",
+         texturePath / "skybox/left.png",
+         texturePath / "skybox/bottom.png",
+         texturePath / "skybox/top.png",
+         texturePath / "skybox/back.png",
+         texturePath / "skybox/front.png"},
+        GL_SRGB8_ALPHA8, GL_RGBA, GL_UNSIGNED_BYTE);
     GLuint skyboxSampler;
     glCreateSamplers(1, &skyboxSampler);
     glSamplerParameteri(skyboxSampler, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);

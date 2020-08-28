@@ -42,12 +42,8 @@ int main() {
     MeshGLRepr planeMesh = createMeshGLRepr(meshesPath / "transparentplane.obj");
     MeshGLRepr groundMesh = createMeshGLRepr(meshesPath / "circularplane.obj");
 
-    GLuint diffuseTexture;
-    glCreateTextures(GL_TEXTURE_2D, 1, &diffuseTexture);
-    loadTexture2D(diffuseTexture, texturePath / ".." / "container2.png", GL_SRGB8_ALPHA8, GL_RGBA, GL_UNSIGNED_BYTE);
-    GLuint windowTexture;
-    glCreateTextures(GL_TEXTURE_2D, 1, &windowTexture);
-    loadTexture2D(windowTexture, texturePath / "window.png", GL_SRGB8_ALPHA8, GL_RGBA, GL_UNSIGNED_BYTE);
+    GLuint diffuseTexture = createTexture2D(texturePath / ".." / "container2.png", GL_SRGB8_ALPHA8, GL_RGBA, GL_UNSIGNED_BYTE);
+    GLuint windowTexture = createTexture2D(texturePath / "window.png", GL_SRGB8_ALPHA8, GL_RGBA, GL_UNSIGNED_BYTE);
 
     GLuint clampSampler;
     glCreateSamplers(1, &clampSampler);

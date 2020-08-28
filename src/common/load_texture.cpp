@@ -21,17 +21,20 @@ std::vector<std::byte> getImageData(const std::filesystem::path& src, int& width
     return imageData;
 }
 
-void loadTexture2D(GLuint texID, const std::filesystem::path& imagePath, GLenum texFormat, GLenum dataFormat, GLenum dataType) {
+GLuint createTexture2D(const std::filesystem::path& imagePath, GLenum texFormat, GLenum dataFormat, GLenum dataType) {
     int imageWidth;
     int imageHeight;
     auto imageData = getImageData(imagePath, imageWidth, imageHeight);
     int levels = std::floor(std::log2(std::max(imageWidth, imageHeight))) + 1;
+    GLuint texID;
+    glCreateTextures(GL_TEXTURE_2D, 1, &texID);
     glTextureStorage2D(texID, levels, texFormat, imageWidth, imageHeight);
     glTextureSubImage2D(texID, 0, 0, 0, imageWidth, imageHeight, dataFormat, dataType, imageData.data());
     glGenerateTextureMipmap(texID);
+    return texID;
 }
 
-void loadTextureCubeMap(GLuint texID, const std::vector<std::filesystem::path>& imagePaths, GLenum texFormat, GLenum dataFormat, GLenum dataType) {
+GLuint createTextureCubeMap(const std::vector<std::filesystem::path>& imagePaths, GLenum texFormat, GLenum dataFormat, GLenum dataType) {
     if (imagePaths.size() != 6){
         throw std::runtime_error("Cube maps have 6 faces, " + std::to_string(imagePaths.size()) + " provided");
     }
@@ -42,9 +45,12 @@ void loadTextureCubeMap(GLuint texID, const std::vector<std::filesystem::path>& 
         imageData.push_back(getImageData(imagePaths[i], imageWidth, imageHeight));
     }
     int levels = std::floor(std::log2(std::max(imageWidth, imageHeight))) + 1;
+    GLuint texID;
+    glCreateTextures(GL_TEXTURE_CUBE_MAP, 1, &texID);
     glTextureStorage2D(texID, levels, texFormat, imageWidth, imageHeight);
     for (std::size_t i = 0; i < 6; i++){
         glTextureSubImage3D(texID, 0, 0, 0, i, imageWidth, imageHeight, 1, dataFormat, dataType, imageData[i].data());
     }
     glGenerateTextureMipmap(texID);
+    return texID;
 }

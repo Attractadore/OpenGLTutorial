@@ -32,9 +32,7 @@ int main() {
     CameraManager::enableCameraLook();
     gladLoadGLLoader(reinterpret_cast<GLADloadproc>(glfwGetProcAddress));
 
-    glEnable(GL_DEBUG_OUTPUT);
-    glEnable(GL_DEBUG_OUTPUT_SYNCHRONOUS);
-    glDebugMessageCallback(debugFunction, nullptr);
+    activateGLDebugOutput();
     glEnable(GL_DEPTH_TEST);
     glEnable(GL_FRAMEBUFFER_SRGB);
     glEnable(GL_CULL_FACE);

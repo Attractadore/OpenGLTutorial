@@ -30,9 +30,7 @@ int main() {
     CameraManager::enableCameraLook();
     gladLoadGLLoader(reinterpret_cast<GLADloadproc>(glfwGetProcAddress));
 
-    glEnable(GL_DEBUG_OUTPUT);
-    glEnable(GL_DEBUG_OUTPUT_SYNCHRONOUS);
-    glDebugMessageCallback(debugFunction, nullptr);
+    activateGLDebugOutput();
     glEnable(GL_TEXTURE_CUBE_MAP_SEAMLESS);
     glEnable(GL_DEPTH_TEST);
     glDepthFunc(GL_LEQUAL);

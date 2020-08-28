@@ -23,13 +23,26 @@ MeshData loadMesh(const std::filesystem::path& scenePath, std::size_t meshIndex)
 
     MeshData newMeshData;
     auto mesh = scene->mMeshes[meshIndex];
+
+    if (!mesh->mVertices) {
+        throw std::runtime_error("Mesh loaded from " + scenePath.string() + " does not contain vertices");
+    }
+
     for (std::size_t j = 0; j < mesh->mNumVertices; j++) {
         MeshVertex vert;
         vert.position = {mesh->mVertices[j].x, mesh->mVertices[j].y, mesh->mVertices[j].z};
-        vert.tangent = {mesh->mTangents[j].x, mesh->mTangents[j].y, mesh->mTangents[j].z};
-        vert.bitangent = {mesh->mBitangents[j].x, mesh->mBitangents[j].y, mesh->mBitangents[j].z};
-        vert.normal = {mesh->mNormals[j].x, mesh->mNormals[j].y, mesh->mNormals[j].z};
-        vert.tex = {mesh->mTextureCoords[0][j].x, mesh->mTextureCoords[0][j].y};
+        if (mesh->mTangents) {
+            vert.tangent = {mesh->mTangents[j].x, mesh->mTangents[j].y, mesh->mTangents[j].z};
+        }
+        if (mesh->mBitangents) {
+            vert.bitangent = {mesh->mBitangents[j].x, mesh->mBitangents[j].y, mesh->mBitangents[j].z};
+        }
+        if (mesh->mNormals) {
+            vert.normal = {mesh->mNormals[j].x, mesh->mNormals[j].y, mesh->mNormals[j].z};
+        }
+        if (mesh->mTextureCoords[0]) {
+            vert.tex = {mesh->mTextureCoords[0][j].x, mesh->mTextureCoords[0][j].y};
+        }
         newMeshData.vertices.push_back(std::move(vert));
     }
     for (std::size_t j = 0; j < mesh->mNumFaces; j++) {

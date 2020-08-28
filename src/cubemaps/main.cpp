@@ -39,20 +39,7 @@ int main() {
     glEnable(GL_FRAMEBUFFER_SRGB);
 
     float cubeRotateSpeed = glm::radians(360.0f) / 60.0f;
-    std::array<GLuint, 2> cubeBuffers;
-    GLuint& cubeVBO = cubeBuffers[0];
-    GLuint& cubeEBO = cubeBuffers[1];
-    glCreateBuffers(cubeBuffers.size(), cubeBuffers.data());
-    GLuint cubeVAO;
-    glCreateVertexArrays(1, &cubeVAO);
-    GLuint numCubeElements;
-    {
-        MeshData cubeMesh = loadMesh(meshesPath / "cube.obj");
-        numCubeElements = cubeMesh.indices.size();
-        glNamedBufferStorage(cubeVBO, sizeof(MeshVertex) * cubeMesh.vertices.size(), cubeMesh.vertices.data(), 0);
-        glNamedBufferStorage(cubeEBO, sizeof(GLuint) * cubeMesh.indices.size(), cubeMesh.indices.data(), 0);
-        storeMesh(cubeVAO, cubeVBO, cubeEBO);
-    }
+    MeshGLRepr cubeMesh = createMeshGLRepr(meshesPath / "cube.obj");
 
     GLuint skyboxCubeMap;
     glCreateTextures(GL_TEXTURE_CUBE_MAP, 1, &skyboxCubeMap);
@@ -129,10 +116,10 @@ int main() {
         glBindSampler(0, skyboxSampler);
 
         glUseProgram(mirrorBoxShaderProgram);
-        glBindVertexArray(cubeVAO);
-        glDrawElements(GL_TRIANGLES, numCubeElements, GL_UNSIGNED_INT, nullptr);
+        glBindVertexArray(cubeMesh.VAO);
+        glDrawElements(GL_TRIANGLES, cubeMesh.numIndices, GL_UNSIGNED_INT, nullptr);
         glUseProgram(skyboxShaderProgram);
-        glDrawElements(GL_TRIANGLES, numCubeElements, GL_UNSIGNED_INT, nullptr);
+        glDrawElements(GL_TRIANGLES, cubeMesh.numIndices, GL_UNSIGNED_INT, nullptr);
 
         glfwSwapBuffers(window);
         glfwPollEvents();
@@ -141,8 +128,6 @@ int main() {
     glDeleteProgram(skyboxShaderProgram);
     glDeleteSamplers(1, &skyboxSampler);
     glDeleteTextures(1, &skyboxCubeMap);
-    glDeleteVertexArrays(1, &cubeVAO);
-    glDeleteBuffers(1, &cubeVBO);
-    glDeleteBuffers(1, &cubeEBO);
+    deleteMeshGLRepr(cubeMesh);
     CameraManager::terminate();
 }

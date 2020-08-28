@@ -40,50 +40,9 @@ int main() {
     glEnable(GL_CULL_FACE);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
-    std::array<GLuint, 2> cubeBuffers;
-    GLuint& cubeVBO = cubeBuffers[0];
-    GLuint& cubeEBO = cubeBuffers[1];
-    glCreateBuffers(cubeBuffers.size(), cubeBuffers.data());
-    GLuint cubeVAO;
-    glCreateVertexArrays(1, &cubeVAO);
-    GLuint numCubeElements;
-    {
-        MeshData cubeMesh = loadMesh(meshesPath / "cube.obj");
-        numCubeElements = cubeMesh.indices.size();
-        glNamedBufferStorage(cubeVBO, sizeof(MeshVertex) * cubeMesh.vertices.size(), cubeMesh.vertices.data(), 0);
-        glNamedBufferStorage(cubeEBO, sizeof(GLuint) * cubeMesh.indices.size(), cubeMesh.indices.data(), 0);
-        storeMesh(cubeVAO, cubeVBO, cubeEBO);
-    }
-
-    std::array<GLuint, 2> planeBuffers;
-    GLuint& planeVBO = planeBuffers[0];
-    GLuint& planeEBO = planeBuffers[1];
-    glCreateBuffers(planeBuffers.size(), planeBuffers.data());
-    GLuint planeVAO;
-    glCreateVertexArrays(1, &planeVAO);
-    GLuint numPlaneElements;
-    {
-        MeshData planeMesh = loadMesh(meshesPath / "transparentplane.obj");
-        numPlaneElements = planeMesh.indices.size();
-        glNamedBufferStorage(planeVBO, sizeof(MeshVertex) * planeMesh.vertices.size(), planeMesh.vertices.data(), 0);
-        glNamedBufferStorage(planeEBO, sizeof(GLuint) * planeMesh.indices.size(), planeMesh.indices.data(), 0);
-        storeMesh(planeVAO, planeVBO, planeEBO);
-    }
-
-    std::array<GLuint, 2> groundBuffers;
-    GLuint& groundVBO = groundBuffers[0];
-    GLuint& groundEBO = groundBuffers[1];
-    glCreateBuffers(groundBuffers.size(), groundBuffers.data());
-    GLuint groundVAO;
-    glCreateVertexArrays(1, &groundVAO);
-    GLuint numGroundElements;
-    {
-        MeshData groundMesh = loadMesh(meshesPath / "circularplane.obj");
-        numGroundElements = groundMesh.indices.size();
-        glNamedBufferStorage(groundVBO, sizeof(MeshVertex) * groundMesh.vertices.size(), groundMesh.vertices.data(), 0);
-        glNamedBufferStorage(groundEBO, sizeof(GLuint) * groundMesh.indices.size(), groundMesh.indices.data(), 0);
-        storeMesh(groundVAO, groundVBO, groundEBO);
-    }
+    MeshGLRepr cubeMesh = createMeshGLRepr(meshesPath / "cube.obj");
+    MeshGLRepr planeMesh = createMeshGLRepr(meshesPath / "transparentplane.obj");
+    MeshGLRepr groundMesh = createMeshGLRepr(meshesPath / "circularplane.obj");
 
     GLuint diffuseTexture;
     glCreateTextures(GL_TEXTURE_2D, 1, &diffuseTexture);
@@ -161,30 +120,30 @@ int main() {
 
         glUseProgram(diffuseShaderProgram);
 
-        glBindVertexArray(cubeVAO);
+        glBindVertexArray(cubeMesh.VAO);
         glBindTextureUnit(0, diffuseTexture);
         glBindSampler(0, clampSampler);
         for (const auto& cubePos: cubePositions) {
             glm::mat4 model = glm::translate(glm::mat4(1.0f), cubePos);
             glProgramUniformMatrix4fv(diffuseShaderProgram, 2, 1, GL_FALSE, glm::value_ptr(model));
-            glDrawElements(GL_TRIANGLES, numCubeElements, GL_UNSIGNED_INT, nullptr);
+            glDrawElements(GL_TRIANGLES, cubeMesh.numIndices, GL_UNSIGNED_INT, nullptr);
         }
-        glBindVertexArray(groundVAO);
+        glBindVertexArray(groundMesh.VAO);
         glBindSampler(0, wrapSampler);
         {
             glm::mat4 model = glm::scale(glm::translate(glm::mat4(1.0f), {0.0f, 0.0f, -1.0f}), glm::vec3(0.3f));
             glProgramUniformMatrix4fv(diffuseShaderProgram, 2, 1, GL_FALSE, glm::value_ptr(model));
-            glDrawElements(GL_TRIANGLES, numGroundElements, GL_UNSIGNED_INT, nullptr);
+            glDrawElements(GL_TRIANGLES, groundMesh.numIndices, GL_UNSIGNED_INT, nullptr);
         }
 
         glEnable(GL_BLEND);
-        glBindVertexArray(planeVAO);
+        glBindVertexArray(planeMesh.VAO);
         glBindTextureUnit(0, windowTexture);
         glBindSampler(0, clampSampler);
         for (const auto& windowPos: windowPositions) {
             glm::mat4 model = glm::translate(glm::mat4(1.0f), windowPos);
             glProgramUniformMatrix4fv(diffuseShaderProgram, 2, 1, GL_FALSE, glm::value_ptr(model));
-            glDrawElements(GL_TRIANGLES, numPlaneElements, GL_UNSIGNED_INT, nullptr);
+            glDrawElements(GL_TRIANGLES, planeMesh.numIndices, GL_UNSIGNED_INT, nullptr);
         }
         glDisable(GL_BLEND);
 
@@ -197,14 +156,8 @@ int main() {
     glDeleteSamplers(1, &wrapSampler);
     glDeleteTextures(1, &diffuseTexture);
     glDeleteTextures(1, &windowTexture);
-    glDeleteVertexArrays(1, &cubeVAO);
-    glDeleteVertexArrays(1, &planeVAO);
-    glDeleteVertexArrays(1, &groundVAO);
-    glDeleteBuffers(1, &cubeVBO);
-    glDeleteBuffers(1, &cubeEBO);
-    glDeleteBuffers(1, &planeVBO);
-    glDeleteBuffers(1, &planeEBO);
-    glDeleteBuffers(1, &groundVBO);
-    glDeleteBuffers(1, &groundEBO);
+    deleteMeshGLRepr(cubeMesh);
+    deleteMeshGLRepr(planeMesh);
+    deleteMeshGLRepr(groundMesh);
     CameraManager::terminate();
 }

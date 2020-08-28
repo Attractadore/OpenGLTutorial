@@ -1,4 +1,5 @@
 #include "load_model.hpp"
+#include "util.hpp"
 
 #include "assimp/Importer.hpp"
 #include "assimp/postprocess.h"
@@ -38,6 +39,26 @@ MeshData loadMesh(const std::filesystem::path& scenePath, std::size_t meshIndex)
         }
     }
     return newMeshData;
+}
+
+MeshGLRepr createMeshGLRepr(const std::filesystem::path& scenePath, std::size_t meshIndex) {
+    MeshGLRepr repr;
+    glCreateBuffers(1, &repr.VBO);
+    glCreateBuffers(1, &repr.EBO);
+    glCreateVertexArrays(1, &repr.VAO);
+    MeshData mesh = loadMesh(scenePath, meshIndex);
+    repr.numIndices = mesh.indices.size();
+    storeVectorGLBuffer(repr.VBO, mesh.vertices);
+    storeVectorGLBuffer(repr.EBO, mesh.indices);
+    storeMesh(repr.VAO, repr.VBO, repr.EBO);
+    return repr;
+}
+
+void deleteMeshGLRepr(MeshGLRepr& repr) {
+    glDeleteBuffers(1, &repr.VBO);
+    glDeleteBuffers(1, &repr.EBO);
+    glDeleteVertexArrays(1, &repr.VAO);
+    repr = {0, 0, 0, 0};
 }
 
 void storeMesh(GLuint VAO, GLuint VBO, GLuint EBO) {

@@ -21,6 +21,16 @@ struct MeshData {
     std::vector<GLuint> indices;
 };
 
+struct MeshGLRepr {
+    GLuint VBO;
+    GLuint EBO;
+    GLuint VAO;
+    GLuint numIndices;
+};
+
 MeshData loadMesh(const std::filesystem::path& scenePath, std::size_t meshIndex = 0);
+
+MeshGLRepr createMeshGLRepr(const std::filesystem::path& scenePath, std::size_t meshIndex = 0);
+void deleteMeshGLRepr(MeshGLRepr&);
 
 void storeMesh(GLuint VAO, GLuint VBO, GLuint EBO);

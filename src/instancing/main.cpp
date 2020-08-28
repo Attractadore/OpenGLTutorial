@@ -5,6 +5,7 @@
 #include "debug.hpp"
 #include "load_model.hpp"
 #include "load_shader.hpp"
+#include "util.hpp"
 
 #include <GLFW/glfw3.h>
 #include <glm/gtc/type_ptr.hpp>
@@ -77,8 +78,8 @@ int main() {
     {
         MeshData sphereMesh = loadMesh(meshesPath / "sphere.obj");
         numSphereIndices = sphereMesh.indices.size();
-        glNamedBufferStorage(sphereVBO, sizeof(MeshVertex) * sphereMesh.vertices.size(), sphereMesh.vertices.data(), 0);
-        glNamedBufferStorage(sphereEBO, sizeof(GLuint) * sphereMesh.indices.size(), sphereMesh.indices.data(), 0);
+        storeVectorGLBuffer(sphereVBO, sphereMesh.vertices);
+        storeVectorGLBuffer(sphereEBO, sphereMesh.indices);
     }
     glNamedBufferStorage(sphereIBO, sizeof(glm::vec3) * numInstances, nullptr, GL_DYNAMIC_STORAGE_BIT);
 

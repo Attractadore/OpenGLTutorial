@@ -5,7 +5,8 @@ layout(location = 3) in vec3 vNormal;
 out VERT_OUT {
     vec3 pos;
     vec3 normal;
-} vOut;
+}
+vOut;
 
 layout(location = 0) uniform mat4 projView;
 layout(location = 1) uniform mat4 model;

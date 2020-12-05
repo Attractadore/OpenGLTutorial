@@ -7,8 +7,8 @@
 #include "load_shader.hpp"
 
 #include <GLFW/glfw3.h>
-#include <glm/gtc/type_ptr.hpp>
 #include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/type_ptr.hpp>
 
 glm::vec3 getLightDir(glm::vec3 const& lightDir) {
     return glm::normalize(lightDir);
@@ -31,13 +31,13 @@ glm::vec3 projToWorld(glm::mat4 const& projViewInv, glm::vec3 const& frustP) {
 }
 
 float getFrustrumDiag(glm::mat4 const& projViewInv) {
-    glm::vec3 v0 = projToWorld(projViewInv, {-1.0f, -1.0f,  1.0f});
-    glm::vec3 v1 = projToWorld(projViewInv, { 1.0f,  1.0f, -1.0f});
-    glm::vec3 v2 = projToWorld(projViewInv, { 1.0f,  1.0f,  1.0f});
+    glm::vec3 v0 = projToWorld(projViewInv, {-1.0f, -1.0f, 1.0f});
+    glm::vec3 v1 = projToWorld(projViewInv, {1.0f, 1.0f, -1.0f});
+    glm::vec3 v2 = projToWorld(projViewInv, {1.0f, 1.0f, 1.0f});
 
     float r1 = glm::length(v1 - v0);
     float r2 = glm::length(v2 - v0);
-    
+
     return glm::max(r1, r2);
 }
 
@@ -45,7 +45,7 @@ float discretize(float v, float step) {
     return glm::floor(v / step) * step;
 }
 
-glm::mat4 getLightProj(glm::mat4 const& lightView, glm::mat4 const& cameraProjViewInv, float shadowSampleSize, uint32_t shadowMapRes) {
+glm::mat4 getLightProj(glm::mat4 const& lightView, glm::mat4 const& cameraProjViewInv, float boxSize, float shadowSampleSize) {
     glm::vec3 maxBox{std::numeric_limits<float>::lowest()};
     glm::vec3 minBox{std::numeric_limits<float>::max()};
     for (float x: {-1.0f, 1.0f}) {
@@ -61,16 +61,60 @@ glm::mat4 getLightProj(glm::mat4 const& lightView, glm::mat4 const& cameraProjVi
         }
     }
 
-
     minBox.x = discretize(minBox.x, shadowSampleSize);
     minBox.y = discretize(minBox.y, shadowSampleSize);
-    float boxSize = (shadowMapRes + 1) * shadowSampleSize;
     maxBox.x = minBox.x + boxSize;
     maxBox.y = minBox.y + boxSize;
 
     glm::mat4 lightProj = glm::ortho(minBox.x, maxBox.x, minBox.y, maxBox.y, minBox.z, maxBox.z);
 
     return lightProj;
+}
+
+std::vector<float> Partition(float nearPlane, float farPlane, std::uint8_t numCascades) {
+    std::vector<float> cascadeBounds;
+    const float cascadeScale = std::pow(farPlane / nearPlane, 1.0f / numCascades);
+    float cascadeNearPlane = nearPlane;
+    for (std::uint8_t i = 0; i < numCascades; i++) {
+        cascadeBounds.push_back(cascadeNearPlane);
+        cascadeNearPlane *= cascadeScale;
+    }
+    cascadeBounds.push_back(farPlane);
+    return cascadeBounds;
+}
+
+float ConvertDepth(float nearPlane, float farPlane, float z) {
+    return (z - nearPlane) / (farPlane - nearPlane) * farPlane / z;
+}
+
+struct CascadeProperties {
+    std::vector<glm::mat4> transforms;
+    glm::vec4 sampleSizes, depths;
+};
+
+CascadeProperties GetCascadeProperties(float nearPlane, float farPlane, std::uint8_t numCascades, std::uint16_t shadowRes, glm::mat4 const& m4View, float verticalFOV, float aspectRatio, glm::mat4 const& lightView) {
+    CascadeProperties properties;
+    const auto cascadeBounds = Partition(nearPlane, farPlane, numCascades);
+    for (std::size_t i = 0; i < numCascades; i++) {
+        const float n = cascadeBounds[i];
+        const float f = cascadeBounds[i + 1];
+        const glm::mat4 cascadeProj = glm::perspective(glm::radians(verticalFOV), aspectRatio, n, f);
+        const glm::mat4 cascadeProjViewInv = glm::inverse(cascadeProj * m4View);
+        // Cascade bounding box must be larger than the frustrum
+        float boundingBoxSize = getFrustrumDiag(cascadeProjViewInv) * (shadowRes + 1) / shadowRes;
+        float sampleSize = boundingBoxSize / shadowRes;
+        const glm::mat4 lightProj = getLightProj(lightView, cascadeProjViewInv, boundingBoxSize, sampleSize);
+        properties.transforms.push_back(lightProj * lightView);
+        properties.sampleSizes[i] = sampleSize;
+        const float nDepth = ConvertDepth(nearPlane, farPlane, n);
+        properties.depths[i] = nDepth;
+    }
+    return properties;
+}
+
+template <glm::length_t C, glm::length_t R, typename T, glm::qualifier Q>
+T const* DataPtr(std::vector<glm::mat<C, R, T, Q>> const& data) {
+    return reinterpret_cast<T const*>(data.data());
 }
 
 int main() {
@@ -117,8 +161,10 @@ int main() {
     GLuint shadowShaderProgram;
     {
         GLuint shadowVertexShader = createShaderGLSL(GL_VERTEX_SHADER, shaderSrcPath / "shadow.vert");
-        shadowShaderProgram = createProgram({shadowVertexShader});
+        GLuint shadowGeomShader = createShaderGLSL(GL_GEOMETRY_SHADER, shaderSrcPath / "shadow.geom");
+        shadowShaderProgram = createProgram({shadowVertexShader, shadowGeomShader});
         glDeleteShader(shadowVertexShader);
+        glDeleteShader(shadowGeomShader);
     }
 
     glm::vec3 lightDir = getLightDir({1.0f, 0.0f, -1.0f});
@@ -135,14 +181,15 @@ int main() {
     glSamplerParameteri(shadowSampler, GL_TEXTURE_COMPARE_MODE, GL_COMPARE_REF_TO_TEXTURE);
     glSamplerParameteri(shadowSampler, GL_TEXTURE_COMPARE_FUNC, GL_LEQUAL);
 
-    uint32_t shadow_map_res = 2048;
-    GLuint shadowMap;
-    glCreateTextures(GL_TEXTURE_2D, 1, &shadowMap);
-    glTextureStorage2D(shadowMap, 1, GL_DEPTH_COMPONENT32, shadow_map_res, shadow_map_res);
+    uint16_t shadowMapRes = 1024;
+    uint8_t shadowMapNumCascades = 4;
+    GLuint shadowMapArray;
+    glCreateTextures(GL_TEXTURE_2D_ARRAY, 1, &shadowMapArray);
+    glTextureStorage3D(shadowMapArray, 1, GL_DEPTH_COMPONENT32, shadowMapRes, shadowMapRes, shadowMapNumCascades);
 
     GLuint shadowFramebuffer;
     glCreateFramebuffers(1, &shadowFramebuffer);
-    glNamedFramebufferTexture(shadowFramebuffer, GL_DEPTH_ATTACHMENT, shadowMap, 0);
+    glNamedFramebufferTexture(shadowFramebuffer, GL_DEPTH_ATTACHMENT, shadowMapArray, 0);
     glNamedFramebufferDrawBuffer(shadowFramebuffer, GL_NONE);
     glNamedFramebufferReadBuffer(shadowFramebuffer, GL_NONE);
 
@@ -163,15 +210,10 @@ int main() {
         }
 
         glm::mat4 projView = CameraManager::getProjectionMatrix() * CameraManager::getViewMatrix();
-        glm::mat4 projViewInv = glm::inverse(projView);
 
         // Generate shadows
-        
+
         // TODO:
-        // CSM algorithm:
-        // 1) Partition view frustrum
-        // 2) Calculate bounding boxes
-        // 3) Use bounding boxes and view frustrum partitions to calculate shadow map texture space transform matrices
         //
         // Variance shadow maps
         //
@@ -181,38 +223,40 @@ int main() {
         //
         // PCF
 
-        float shadowSampleSize = getFrustrumDiag(projViewInv) / shadow_map_res;
-        glm::mat4 lightProj = getLightProj(lightView, projViewInv, shadowSampleSize, shadow_map_res);
-        glm::mat4 lightProjView = lightProj * lightView;
+        auto cascadeProperties = GetCascadeProperties(CameraManager::getNearPlane(), CameraManager::getFarPlane(), shadowMapNumCascades, shadowMapRes, CameraManager::getViewMatrix(), CameraManager::getVerticalFOV(), CameraManager::getAspectRatio(), lightView);
 
         glBindFramebuffer(GL_FRAMEBUFFER, shadowFramebuffer);
-        glViewport(0, 0, shadow_map_res, shadow_map_res);
+        glViewport(0, 0, shadowMapRes, shadowMapRes);
         glEnable(GL_DEPTH_CLAMP);
         glClear(GL_DEPTH_BUFFER_BIT);
 
         glUseProgram(shadowShaderProgram);
-        glProgramUniformMatrix4fv(shadowShaderProgram, 0, 1, GL_FALSE, glm::value_ptr(lightProjView));
-
-        glProgramUniformMatrix4fv(shadowShaderProgram, 1, 1, GL_FALSE, glm::value_ptr(bunnyModel));
+        glProgramUniformMatrix4fv(shadowShaderProgram, 0, 1, GL_FALSE, glm::value_ptr(bunnyModel));
+        glProgramUniform1i(shadowShaderProgram, 10, shadowMapNumCascades);
+        glProgramUniformMatrix4fv(shadowShaderProgram, 11, shadowMapNumCascades, GL_FALSE, DataPtr(cascadeProperties.transforms));
         glBindVertexArray(bunnyMesh.VAO);
         glDrawElements(GL_TRIANGLES, bunnyMesh.numIndices, GL_UNSIGNED_INT, nullptr);
 
         glDisable(GL_DEPTH_CLAMP);
         glViewport(0, 0, viewportW, viewportH);
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
-        
+
         // Finish generating shadows
 
         glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
         glProgramUniform3fv(lightingShaderProgram, 20, 1, glm::value_ptr(lightDir));
-        glProgramUniformMatrix4fv(lightingShaderProgram, 21, 1, GL_FALSE, glm::value_ptr(lightProjView));
-        glProgramUniform1f(lightingShaderProgram, 22, shadowSampleSize);
-        glProgramUniform3fv(lightingShaderProgram, 30, 1, glm::value_ptr(camera->cameraPos));
+
+        glProgramUniform1i(lightingShaderProgram, 21, shadowMapNumCascades);
+        glProgramUniformMatrix4fv(lightingShaderProgram, 22, shadowMapNumCascades, GL_FALSE, DataPtr(cascadeProperties.transforms));
+        glProgramUniform4fv(lightingShaderProgram, 30, 1, glm::value_ptr(cascadeProperties.depths));
+        glProgramUniform4fv(lightingShaderProgram, 31, 1, glm::value_ptr(cascadeProperties.sampleSizes));
+
+        glProgramUniform3fv(lightingShaderProgram, 40, 1, glm::value_ptr(camera->cameraPos));
 
         glUseProgram(lightingShaderProgram);
-        glBindTextureUnit(0, shadowMap);
+        glBindTextureUnit(0, shadowMapArray);
         glBindSampler(0, shadowSampler);
 
         glProgramUniformMatrix4fv(lightingShaderProgram, 0, 1, GL_FALSE, glm::value_ptr(projView));
@@ -236,7 +280,7 @@ int main() {
     deleteMeshGLRepr(bunnyMesh);
     deleteMeshGLRepr(groundMesh);
     glDeleteSamplers(1, &shadowSampler);
-    glDeleteTextures(1, &shadowMap);
+    glDeleteTextures(1, &shadowMapArray);
     glDeleteFramebuffers(1, &shadowFramebuffer);
     glDeleteProgram(lightingShaderProgram);
     glDeleteProgram(shadowShaderProgram);

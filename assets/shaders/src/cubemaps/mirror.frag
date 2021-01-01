@@ -1,12 +1,12 @@
 #version 460 core
 
-in VERT_OUT {
+layout(location = 0) in VERT_OUT {
     vec3 pos;
     vec3 normal;
 }
 fIn;
 
-out vec4 fColor;
+layout(location = 0) out vec4 fColor;
 
 layout(location = 4) uniform vec3 cameraPos;
 layout(binding = 0) uniform samplerCube cubeMap;

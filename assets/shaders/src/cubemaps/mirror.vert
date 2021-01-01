@@ -2,7 +2,7 @@
 layout(location = 0) in vec3 vPos;
 layout(location = 3) in vec3 vNormal;
 
-out VERT_OUT {
+layout(location = 0) out VERT_OUT {
     vec3 pos;
     vec3 normal;
 }

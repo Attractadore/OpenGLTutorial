@@ -1,7 +1,7 @@
 #version 460 core
 layout(location = 0) in vec3 vPos;
 
-out vec3 fPos;
+layout(location = 0) out vec3 fPos;
 
 layout(location = 0) uniform mat4 projection;
 layout(location = 1) uniform mat4 view;

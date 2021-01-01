@@ -9,9 +9,8 @@ inline void debugFunction(GLenum, GLenum, GLuint, GLenum severity, GLsizei, cons
     }
 }
 
-inline void activateGLDebugOutput(GLDEBUGPROC callback = debugFunction, const void* userParam = nullptr){
+inline void activateGLDebugOutput(GLDEBUGPROC callback = debugFunction, const void* userParam = nullptr) {
     glEnable(GL_DEBUG_OUTPUT);
     glEnable(GL_DEBUG_OUTPUT_SYNCHRONOUS);
     glDebugMessageCallback(callback, userParam);
 }
-

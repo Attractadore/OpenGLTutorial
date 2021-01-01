@@ -11,11 +11,10 @@
 #include <glm/gtc/type_ptr.hpp>
 
 int main() {
-    std::filesystem::path assetsPath = "assets";
-    std::filesystem::path meshesPath = assetsPath / "meshes";
-    std::filesystem::path texturePath = assetsPath / "textures" / "cubemaps";
-    std::filesystem::path shaderSrcPath = assetsPath / "shaders" / "src" / "cubemaps";
-    std::filesystem::path shaderBinPath = assetsPath / "shaders" / "bin" / "cubemaps";
+    const std::filesystem::path assetsPath = "assets";
+    const std::filesystem::path meshesPath = assetsPath / "meshes";
+    const std::filesystem::path texturePath = assetsPath / "textures" / "cubemaps";
+    const std::filesystem::path shaderBinPath = assetsPath / "shaders" / "bin" / "cubemaps";
 
     int viewportW = 1280;
     int viewportH = 720;
@@ -57,16 +56,16 @@ int main() {
 
     GLuint skyboxShaderProgram;
     {
-        GLuint skyboxVertexShader = createShaderGLSL(GL_VERTEX_SHADER, shaderSrcPath / "skybox.vert");
-        GLuint skyboxFragmentShader = createShaderGLSL(GL_FRAGMENT_SHADER, shaderSrcPath / "skybox.frag");
+        GLuint skyboxVertexShader = createShaderSPIRV(GL_VERTEX_SHADER, shaderBinPath / "skybox.vert.spv");
+        GLuint skyboxFragmentShader = createShaderSPIRV(GL_FRAGMENT_SHADER, shaderBinPath / "skybox.frag.spv");
         skyboxShaderProgram = createProgram({skyboxVertexShader, skyboxFragmentShader});
         glDeleteShader(skyboxVertexShader);
         glDeleteShader(skyboxFragmentShader);
     }
     GLuint mirrorBoxShaderProgram;
     {
-        GLuint mirrorBoxVertexShader = createShaderGLSL(GL_VERTEX_SHADER, shaderSrcPath / "mirror.vert");
-        GLuint mirrorBoxFragmentShader = createShaderGLSL(GL_FRAGMENT_SHADER, shaderSrcPath / "mirror.frag");
+        GLuint mirrorBoxVertexShader = createShaderSPIRV(GL_VERTEX_SHADER, shaderBinPath / "mirror.vert.spv");
+        GLuint mirrorBoxFragmentShader = createShaderSPIRV(GL_FRAGMENT_SHADER, shaderBinPath / "mirror.frag.spv");
         mirrorBoxShaderProgram = createProgram({mirrorBoxVertexShader, mirrorBoxFragmentShader});
         glDeleteShader(mirrorBoxVertexShader);
         glDeleteShader(mirrorBoxFragmentShader);

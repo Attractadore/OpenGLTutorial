@@ -2,8 +2,8 @@
 
 #include <png.h>
 
-#include <cstring>
 #include <cmath>
+#include <cstring>
 
 std::vector<std::byte> getImageData(const std::filesystem::path& src, int& width, int& height) {
     if (!std::filesystem::exists(src)) {
@@ -35,20 +35,20 @@ GLuint createTexture2D(const std::filesystem::path& imagePath, GLenum texFormat,
 }
 
 GLuint createTextureCubeMap(const std::vector<std::filesystem::path>& imagePaths, GLenum texFormat, GLenum dataFormat, GLenum dataType) {
-    if (imagePaths.size() != 6){
+    if (imagePaths.size() != 6) {
         throw std::runtime_error("Cube maps have 6 faces, " + std::to_string(imagePaths.size()) + " provided");
     }
     int imageWidth;
     int imageHeight;
     std::vector<std::vector<std::byte>> imageData;
-    for (std::size_t i = 0; i < 6; i++){
+    for (std::size_t i = 0; i < 6; i++) {
         imageData.push_back(getImageData(imagePaths[i], imageWidth, imageHeight));
     }
     int levels = std::floor(std::log2(std::max(imageWidth, imageHeight))) + 1;
     GLuint texID;
     glCreateTextures(GL_TEXTURE_CUBE_MAP, 1, &texID);
     glTextureStorage2D(texID, levels, texFormat, imageWidth, imageHeight);
-    for (std::size_t i = 0; i < 6; i++){
+    for (std::size_t i = 0; i < 6; i++) {
         glTextureSubImage3D(texID, 0, 0, 0, i, imageWidth, imageHeight, 1, dataFormat, dataType, imageData[i].data());
     }
     glGenerateTextureMipmap(texID);

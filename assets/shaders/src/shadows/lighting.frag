@@ -1,6 +1,6 @@
 #version 460 core
 
-in VERT_OUT {
+layout(location = 0) in VERT_OUT {
     vec3 pos;
     vec3 normal;
 }

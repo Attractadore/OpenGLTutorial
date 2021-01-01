@@ -13,11 +13,10 @@
 #include <algorithm>
 
 int main() {
-    std::filesystem::path assetsPath = "assets";
-    std::filesystem::path meshesPath = assetsPath / "meshes";
-    std::filesystem::path texturePath = assetsPath / "textures" / "blending";
-    std::filesystem::path shaderSrcPath = assetsPath / "shaders" / "src" / "blending";
-    std::filesystem::path shaderBinPath = assetsPath / "shaders" / "bin" / "blending";
+    const std::filesystem::path assetsPath = "assets";
+    const std::filesystem::path meshesPath = assetsPath / "meshes";
+    const std::filesystem::path texturePath = assetsPath / "textures" / "blending";
+    const std::filesystem::path shaderBinPath = assetsPath / "shaders" / "bin" / "blending";
 
     int viewportW = 1280;
     int viewportH = 720;
@@ -60,8 +59,8 @@ int main() {
 
     GLuint diffuseShaderProgram;
     {
-        GLuint diffuseVertexShader = createShaderGLSL(GL_VERTEX_SHADER, shaderSrcPath / "diffuse.vert");
-        GLuint diffuseFragmentShader = createShaderGLSL(GL_FRAGMENT_SHADER, shaderSrcPath / "diffuse.frag");
+        GLuint diffuseVertexShader = createShaderSPIRV(GL_VERTEX_SHADER, shaderBinPath / "diffuse.vert.spv");
+        GLuint diffuseFragmentShader = createShaderSPIRV(GL_FRAGMENT_SHADER, shaderBinPath / "diffuse.frag.spv");
         diffuseShaderProgram = createProgram({diffuseVertexShader, diffuseFragmentShader});
         glDeleteShader(diffuseVertexShader);
         glDeleteShader(diffuseFragmentShader);

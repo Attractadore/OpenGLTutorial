@@ -118,11 +118,10 @@ T const* DataPtr(std::vector<glm::mat<C, R, T, Q>> const& data) {
 }
 
 int main() {
-    std::filesystem::path assetsPath = "assets";
-    std::filesystem::path meshesPath = assetsPath / "meshes" / "shadows";
-    std::filesystem::path texturePath = assetsPath / "textures" / "shadows";
-    std::filesystem::path shaderSrcPath = assetsPath / "shaders" / "src" / "shadows";
-    std::filesystem::path shaderBinPath = assetsPath / "shaders" / "bin" / "shadows";
+    const std::filesystem::path assetsPath = "assets";
+    const std::filesystem::path meshesPath = assetsPath / "meshes" / "shadows";
+    const std::filesystem::path texturePath = assetsPath / "textures" / "shadows";
+    const std::filesystem::path shaderBinPath = assetsPath / "shaders" / "bin" / "shadows";
 
     int viewportW = 1280;
     int viewportH = 720;
@@ -152,16 +151,16 @@ int main() {
 
     GLuint lightingShaderProgram;
     {
-        GLuint lightingVertexShader = createShaderGLSL(GL_VERTEX_SHADER, shaderSrcPath / "lighting.vert");
-        GLuint lightingFragmentShader = createShaderGLSL(GL_FRAGMENT_SHADER, shaderSrcPath / "lighting.frag");
+        GLuint lightingVertexShader = createShaderSPIRV(GL_VERTEX_SHADER, shaderBinPath / "lighting.vert.spv");
+        GLuint lightingFragmentShader = createShaderSPIRV(GL_FRAGMENT_SHADER, shaderBinPath / "lighting.frag.spv");
         lightingShaderProgram = createProgram({lightingVertexShader, lightingFragmentShader});
         glDeleteShader(lightingVertexShader);
         glDeleteShader(lightingFragmentShader);
     }
     GLuint shadowShaderProgram;
     {
-        GLuint shadowVertexShader = createShaderGLSL(GL_VERTEX_SHADER, shaderSrcPath / "shadow.vert");
-        GLuint shadowGeomShader = createShaderGLSL(GL_GEOMETRY_SHADER, shaderSrcPath / "shadow.geom");
+        GLuint shadowVertexShader = createShaderSPIRV(GL_VERTEX_SHADER, shaderBinPath / "shadow.vert.spv");
+        GLuint shadowGeomShader = createShaderSPIRV(GL_GEOMETRY_SHADER, shaderBinPath / "shadow.geom.spv");
         shadowShaderProgram = createProgram({shadowVertexShader, shadowGeomShader});
         glDeleteShader(shadowVertexShader);
         glDeleteShader(shadowGeomShader);

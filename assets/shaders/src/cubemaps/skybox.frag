@@ -1,7 +1,7 @@
 #version 460 core
-in vec3 fPos;
+layout(location = 0) in vec3 fPos;
 
-out vec4 fColor;
+layout(location = 0) out vec4 fColor;
 
 layout(binding = 0) uniform samplerCube cubeMap;
 

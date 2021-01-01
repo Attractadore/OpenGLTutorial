@@ -13,10 +13,9 @@
 #include <random>
 
 int main() {
-    std::filesystem::path assetsPath = "assets";
-    std::filesystem::path meshesPath = assetsPath / "meshes";
-    std::filesystem::path shaderSrcPath = assetsPath / "shaders" / "src" / "instancing";
-    std::filesystem::path shaderBinPath = assetsPath / "shaders" / "bin" / "instancing";
+    const std::filesystem::path assetsPath = "assets";
+    const std::filesystem::path meshesPath = assetsPath / "meshes";
+    const std::filesystem::path shaderBinPath = assetsPath / "shaders" / "bin" / "instancing";
 
     float cameraSpeed = 500.0f;
     glm::vec3 cameraStartPos = {-3500.0f, 0.0f, 1500.0f};
@@ -37,7 +36,7 @@ int main() {
     glEnable(GL_DEPTH_TEST);
     glEnable(GL_FRAMEBUFFER_SRGB);
 
-    int numInstances = 50000;
+    int numInstances = 10000;
     float accelerationScalar;
     std::vector<glm::vec3> positions;
     std::vector<glm::vec3> velocities;
@@ -96,9 +95,9 @@ int main() {
     GLuint diffuseShaderProgram;
     GLuint diffuseInstancedShaderProgram;
     {
-        GLuint diffuseVertexShader = createShaderGLSL(GL_VERTEX_SHADER, shaderSrcPath / "diffuse.vert");
-        GLuint diffuseInstancedVertexShader = createShaderGLSL(GL_VERTEX_SHADER, shaderSrcPath / "diffuse_instanced.vert");
-        GLuint diffuseFragmentShader = createShaderGLSL(GL_FRAGMENT_SHADER, shaderSrcPath / "diffuse.frag");
+        GLuint diffuseVertexShader = createShaderSPIRV(GL_VERTEX_SHADER, shaderBinPath / "diffuse.vert.spv");
+        GLuint diffuseInstancedVertexShader = createShaderSPIRV(GL_VERTEX_SHADER, shaderBinPath / "diffuse_instanced.vert.spv");
+        GLuint diffuseFragmentShader = createShaderSPIRV(GL_FRAGMENT_SHADER, shaderBinPath / "diffuse.frag.spv");
         diffuseShaderProgram = createProgram({diffuseVertexShader, diffuseFragmentShader});
         diffuseInstancedShaderProgram = createProgram({diffuseInstancedVertexShader, diffuseFragmentShader});
         glDeleteShader(diffuseVertexShader);

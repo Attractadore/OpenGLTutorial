@@ -2,10 +2,12 @@
 
 #include <fstream>
 
-std::string loadGLSL(const std::filesystem::path& shaderPath) {
+#include <filesystem>
+
+std::string loadGLSL(const std::string& shaderPath) {
     std::ifstream is(shaderPath, std::ios::binary);
     if (!is) {
-        throw std::runtime_error("Failed to load GLSL from " + shaderPath.string());
+        throw std::runtime_error("Failed to load GLSL from " + shaderPath);
     }
     auto fileSize = std::filesystem::file_size(shaderPath);
     std::string fileContents(fileSize, ' ');
@@ -13,10 +15,10 @@ std::string loadGLSL(const std::filesystem::path& shaderPath) {
     return fileContents;
 }
 
-std::vector<char> loadSPIRV(const std::filesystem::path& shaderPath) {
+std::vector<char> loadSPIRV(const std::string& shaderPath) {
     std::ifstream is(shaderPath, std::ios::binary);
     if (!is) {
-        throw std::runtime_error("Failed to load SPIR-V from " + shaderPath.string());
+        throw std::runtime_error("Failed to load SPIR-V from " + shaderPath);
     }
     auto fileSize = std::filesystem::file_size(shaderPath);
     std::vector<char> fileContents(fileSize);
@@ -43,7 +45,7 @@ std::string GetShaderCompileLog(GLuint shader) {
 }
 }  // namespace
 
-GLuint createShaderGLSL(GLenum shaderType, const std::filesystem::path& shaderPath) {
+GLuint createShaderGLSL(GLenum shaderType, const std::string& shaderPath) {
     GLuint shader = glCreateShader(shaderType);
     std::string shaderSource = loadGLSL(shaderPath);
     const char* shaderSourceCStr = shaderSource.c_str();
@@ -60,7 +62,7 @@ GLuint createShaderGLSL(GLenum shaderType, const std::filesystem::path& shaderPa
     return shader;
 }
 
-GLuint createShaderSPIRV(GLenum shaderType, const std::filesystem::path& shaderPath, const std::string& entryPoint) {
+GLuint createShaderSPIRV(GLenum shaderType, const std::string& shaderPath, const std::string& entryPoint) {
     GLuint shader = glCreateShader(shaderType);
     std::vector<char> shaderBinary = loadSPIRV(shaderPath);
 

@@ -11,10 +11,10 @@
 #include <glm/gtc/type_ptr.hpp>
 
 int main() {
-    const std::filesystem::path assetsPath = "assets";
-    const std::filesystem::path meshesPath = assetsPath / "meshes";
-    const std::filesystem::path texturePath = assetsPath / "textures" / "cubemaps";
-    const std::filesystem::path shaderBinPath = assetsPath / "shaders" / "bin" / "cubemaps";
+    const std::string assetsPath = "assets";
+    const std::string meshesPath = assetsPath + "/meshes";
+    const std::string texturePath = assetsPath + "/textures/cubemaps";
+    const std::string shaderBinPath = assetsPath + "/shaders/bin/cubemaps";
 
     int viewportW = 1280;
     int viewportH = 720;
@@ -36,15 +36,15 @@ int main() {
     glEnable(GL_FRAMEBUFFER_SRGB);
 
     float cubeRotateSpeed = glm::radians(360.0f) / 60.0f;
-    MeshGLRepr cubeMesh = createMeshGLRepr(meshesPath / "cube.obj");
+    MeshGLRepr cubeMesh = createMeshGLRepr(meshesPath + "/cube.obj");
 
     GLuint skyboxCubeMap = createTextureCubeMap(
-        {texturePath / "skybox/right.png",
-         texturePath / "skybox/left.png",
-         texturePath / "skybox/bottom.png",
-         texturePath / "skybox/top.png",
-         texturePath / "skybox/back.png",
-         texturePath / "skybox/front.png"},
+        {texturePath + "/skybox/right.png",
+         texturePath + "/skybox/left.png",
+         texturePath + "/skybox/bottom.png",
+         texturePath + "/skybox/top.png",
+         texturePath + "/skybox/back.png",
+         texturePath + "/skybox/front.png"},
         GL_SRGB8_ALPHA8, GL_RGBA, GL_UNSIGNED_BYTE);
     GLuint skyboxSampler;
     glCreateSamplers(1, &skyboxSampler);
@@ -56,16 +56,16 @@ int main() {
 
     GLuint skyboxShaderProgram;
     {
-        GLuint skyboxVertexShader = createShaderSPIRV(GL_VERTEX_SHADER, shaderBinPath / "skybox.vert.spv");
-        GLuint skyboxFragmentShader = createShaderSPIRV(GL_FRAGMENT_SHADER, shaderBinPath / "skybox.frag.spv");
+        GLuint skyboxVertexShader = createShaderSPIRV(GL_VERTEX_SHADER, shaderBinPath + "/skybox.vert.spv");
+        GLuint skyboxFragmentShader = createShaderSPIRV(GL_FRAGMENT_SHADER, shaderBinPath + "/skybox.frag.spv");
         skyboxShaderProgram = createProgram({skyboxVertexShader, skyboxFragmentShader});
         glDeleteShader(skyboxVertexShader);
         glDeleteShader(skyboxFragmentShader);
     }
     GLuint mirrorBoxShaderProgram;
     {
-        GLuint mirrorBoxVertexShader = createShaderSPIRV(GL_VERTEX_SHADER, shaderBinPath / "mirror.vert.spv");
-        GLuint mirrorBoxFragmentShader = createShaderSPIRV(GL_FRAGMENT_SHADER, shaderBinPath / "mirror.frag.spv");
+        GLuint mirrorBoxVertexShader = createShaderSPIRV(GL_VERTEX_SHADER, shaderBinPath + "/mirror.vert.spv");
+        GLuint mirrorBoxFragmentShader = createShaderSPIRV(GL_FRAGMENT_SHADER, shaderBinPath + "/mirror.frag.spv");
         mirrorBoxShaderProgram = createProgram({mirrorBoxVertexShader, mirrorBoxFragmentShader});
         glDeleteShader(mirrorBoxVertexShader);
         glDeleteShader(mirrorBoxFragmentShader);

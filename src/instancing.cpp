@@ -13,9 +13,9 @@
 #include <random>
 
 int main() {
-    const std::filesystem::path assetsPath = "assets";
-    const std::filesystem::path meshesPath = assetsPath / "meshes";
-    const std::filesystem::path shaderBinPath = assetsPath / "shaders" / "bin" / "instancing";
+    const std::string assetsPath = "assets";
+    const std::string meshesPath = assetsPath + "/meshes";
+    const std::string shaderBinPath = assetsPath + "/shaders/bin/instancing";
 
     float cameraSpeed = 500.0f;
     glm::vec3 cameraStartPos = {-3500.0f, 0.0f, 1500.0f};
@@ -73,7 +73,7 @@ int main() {
     glCreateBuffers(3, sphereBuffers.data());
     GLuint numSphereIndices;
     {
-        MeshData sphereMesh = loadMesh(meshesPath / "sphere.obj");
+        MeshData sphereMesh = loadMesh(meshesPath + "/sphere.obj");
         numSphereIndices = sphereMesh.indices.size();
         storeVectorGLBuffer(sphereVBO, sphereMesh.vertices);
         storeVectorGLBuffer(sphereEBO, sphereMesh.indices);
@@ -95,9 +95,9 @@ int main() {
     GLuint diffuseShaderProgram;
     GLuint diffuseInstancedShaderProgram;
     {
-        GLuint diffuseVertexShader = createShaderSPIRV(GL_VERTEX_SHADER, shaderBinPath / "diffuse.vert.spv");
-        GLuint diffuseInstancedVertexShader = createShaderSPIRV(GL_VERTEX_SHADER, shaderBinPath / "diffuse_instanced.vert.spv");
-        GLuint diffuseFragmentShader = createShaderSPIRV(GL_FRAGMENT_SHADER, shaderBinPath / "diffuse.frag.spv");
+        GLuint diffuseVertexShader = createShaderSPIRV(GL_VERTEX_SHADER, shaderBinPath + "/diffuse.vert.spv");
+        GLuint diffuseInstancedVertexShader = createShaderSPIRV(GL_VERTEX_SHADER, shaderBinPath + "/diffuse_instanced.vert.spv");
+        GLuint diffuseFragmentShader = createShaderSPIRV(GL_FRAGMENT_SHADER, shaderBinPath + "/diffuse.frag.spv");
         diffuseShaderProgram = createProgram({diffuseVertexShader, diffuseFragmentShader});
         diffuseInstancedShaderProgram = createProgram({diffuseInstancedVertexShader, diffuseFragmentShader});
         glDeleteShader(diffuseVertexShader);

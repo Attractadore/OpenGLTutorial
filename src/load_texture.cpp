@@ -7,116 +7,70 @@
 
 #include <cmath>
 
-struct ImageDimensions {
-    unsigned width, height;
-};
-
-class PNGImage {
-public:
-    PNGImage(const std::filesystem::path& path);
-    PNGImage(const PNGImage& other) = delete;
-    PNGImage(PNGImage&& other) noexcept;
-
-    ~PNGImage();
-
-    PNGImage& operator=(const PNGImage& other) = delete;
-    PNGImage& operator=(PNGImage&& other) noexcept;
-
-    bool IsOpened() const noexcept;
-
-    char const* GetMessageCStr() const noexcept;
-
-    ImageDimensions GetDimensions() const noexcept;
-
-    std::vector<std::byte> const& GetData() const noexcept;
-
-private:
-    png_image image;
+namespace {
+struct ImageData {
     std::vector<std::byte> data;
+    unsigned width;
+    unsigned height;
+    unsigned levels;
 };
 
-PNGImage::PNGImage(std::filesystem::path const& path) {
-    this->image = {.opaque = nullptr, .version = PNG_IMAGE_VERSION};
-    if (png_image_begin_read_from_file(&(this->image), path.string().c_str()) != 0) {
-        this->image.format = PNG_FORMAT_RGBA;
-        this->data.resize(PNG_IMAGE_SIZE(this->image));
-        png_image_finish_read(&(this->image), nullptr, this->data.data(), -PNG_IMAGE_ROW_STRIDE(this->image), nullptr);
+unsigned GetMipLevels(unsigned width, unsigned height) {
+    unsigned m = std::max(width, height);
+    unsigned c = 0;
+    do {
+        c++;
+    } while (m >>= 1);
+    return c;
+}
+
+ImageData GetImageData(std::string const& path) {
+    png_image image = {.opaque = nullptr, .version = PNG_IMAGE_VERSION};
+    if (!png_image_begin_read_from_file(&(image), path.c_str())) {
+        return {};
     }
-}
-
-PNGImage::PNGImage(PNGImage&& other) noexcept:
-    data{std::move(other.data)} {
-    this->image = other.image;
-    other.image = {.opaque = nullptr, .version = PNG_IMAGE_VERSION};
-}
-
-PNGImage::~PNGImage() {
-    png_image_free(&this->image);
-}
-
-PNGImage& PNGImage::operator=(PNGImage&& other) noexcept {
-    png_image_free(&this->image);
-    this->image = other.image;
-    other.image = {.opaque = nullptr, .version = PNG_IMAGE_VERSION};
-    this->data = std::move(other.data);
-    return *this;
-}
-
-bool PNGImage::IsOpened() const noexcept {
-    return this->image.warning_or_error | PNG_IMAGE_ERROR;
-}
-
-ImageDimensions PNGImage::GetDimensions() const noexcept {
-    return {.width = this->image.width, .height = this->image.height};
-}
-
-char const* PNGImage::GetMessageCStr() const noexcept {
-    return this->image.message;
-}
-
-std::vector<std::byte> const& PNGImage::GetData() const noexcept {
-    return this->data;
-}
-
-static unsigned GetMipLevels(ImageDimensions const& dimensions) {
-    return std::floor(std::log2(std::max(dimensions.width, dimensions.height))) + 1;
-}
-
-GLuint createTexture2D(const std::filesystem::path& path, GLenum texFormat, GLenum dataFormat, GLenum dataType) {
-    PNGImage image(path);
-    if (!image.IsOpened()) {
-        throw std::runtime_error("Failed to create 2D texture from" + path.string() + ":\n" + image.GetMessageCStr());
+    image.format = PNG_FORMAT_RGBA;
+    ImageData imageData = {.data = std::vector<std::byte>(PNG_IMAGE_SIZE(image))};
+    if (!png_image_finish_read(&(image), nullptr, imageData.data.data(), -PNG_IMAGE_ROW_STRIDE(image), nullptr)) {
+        png_image_free(&image);
+        return {};
     }
-    auto dimensions = image.GetDimensions();
-    auto levels = GetMipLevels(dimensions);
-    auto data = image.GetData();
+    imageData.width = image.width;
+    imageData.height = image.height;
+    imageData.levels = GetMipLevels(imageData.width, imageData.height);
+    return imageData;
+}
+};  // namespace
+
+GLuint createTexture2D(std::string const& path, GLenum texFormat, GLenum dataFormat, GLenum dataType) {
+    auto image = GetImageData(path);
+    if (image.data.empty()) {
+        throw std::runtime_error("Failed to load 2D texture from " + path);
+    }
     GLuint texID = 0;
     glCreateTextures(GL_TEXTURE_2D, 1, &texID);
-    glTextureStorage2D(texID, levels, texFormat, dimensions.width, dimensions.height);
-    glTextureSubImage2D(texID, 0, 0, 0, dimensions.width, dimensions.height, dataFormat, dataType, data.data());
+    glTextureStorage2D(texID, image.levels, texFormat, image.width, image.height);
+    glTextureSubImage2D(texID, 0, 0, 0, image.width, image.height, dataFormat, dataType, image.data.data());
     glGenerateTextureMipmap(texID);
     return texID;
 }
 
-GLuint createTextureCubeMap(const std::array<std::filesystem::path, 6>& paths, GLenum texFormat, GLenum dataFormat, GLenum dataType) {
-    std::vector<PNGImage> images;
-    for (const auto& path: paths) {
-        images.emplace_back(path);
-        PNGImage const& image = images.back();
-        if (!image.IsOpened()) {
-            throw std::runtime_error("Failed to create cubemap texture face from" + path.string() + ":\n" + image.GetMessageCStr());
+GLuint createTextureCubeMap(const std::array<std::string, 6>& paths, GLenum texFormat, GLenum dataFormat, GLenum dataType) {
+    std::array<ImageData, 6> images;
+    for (std::size_t i = 0; i < 6; i++) {
+        images[i] = GetImageData(paths[i]);
+        if (images[i].data.empty()) {
+            throw std::runtime_error("Failed to load cubemap face texture from " + paths[i]);
         }
     }
 
-    auto dimensions = images.front().GetDimensions();
-    auto levels = GetMipLevels(dimensions);
     GLuint texID = 0;
     glCreateTextures(GL_TEXTURE_CUBE_MAP, 1, &texID);
-    glTextureStorage2D(texID, levels, texFormat, dimensions.width, dimensions.height);
+    glTextureStorage2D(texID, images[0].levels, texFormat, images[0].width, images[0].height);
     for (std::size_t i = 0; i < 6; i++) {
-        glTextureSubImage3D(texID, 0, 0, 0, i, dimensions.width, dimensions.height, 1, dataFormat, dataType, images[i].GetData().data());
+        glTextureSubImage3D(texID, 0, 0, 0, i, images[i].width, images[i].height, 1, dataFormat, dataType, images[i].data.data());
     }
-
     glGenerateTextureMipmap(texID);
+
     return texID;
 }

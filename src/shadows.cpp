@@ -118,10 +118,10 @@ T const* DataPtr(std::vector<glm::mat<C, R, T, Q>> const& data) {
 }
 
 int main() {
-    const std::filesystem::path assetsPath = "assets";
-    const std::filesystem::path meshesPath = assetsPath / "meshes" / "shadows";
-    const std::filesystem::path texturePath = assetsPath / "textures" / "shadows";
-    const std::filesystem::path shaderBinPath = assetsPath / "shaders" / "bin" / "shadows";
+    const std::string assetsPath = "assets";
+    const std::string meshesPath = assetsPath + "/meshes/shadows";
+    const std::string texturePath = assetsPath + "/textures/shadows";
+    const std::string shaderBinPath = assetsPath + "/shaders/bin/shadows";
 
     int viewportW = 1280;
     int viewportH = 720;
@@ -142,25 +142,25 @@ int main() {
     glEnable(GL_FRAMEBUFFER_SRGB);
     glEnable(GL_CULL_FACE);
 
-    MeshGLRepr bunnyMesh = createMeshGLRepr(meshesPath / "bunny.obj");
+    MeshGLRepr bunnyMesh = createMeshGLRepr(meshesPath + "/bunny.obj");
     glm::mat4 bunnyModel{1.0f};
     glm::mat3 bunnyNormal{1.0f};
-    MeshGLRepr groundMesh = createMeshGLRepr(meshesPath / ".." / "circularplane.obj");
+    MeshGLRepr groundMesh = createMeshGLRepr(meshesPath + "/../circularplane.obj");
     glm::mat4 groundModel = glm::scale(glm::mat4{1.0f}, glm::vec3{0.1f});
     glm::mat3 groundNormal{1.0f};
 
     GLuint lightingShaderProgram;
     {
-        GLuint lightingVertexShader = createShaderSPIRV(GL_VERTEX_SHADER, shaderBinPath / "lighting.vert.spv");
-        GLuint lightingFragmentShader = createShaderSPIRV(GL_FRAGMENT_SHADER, shaderBinPath / "lighting.frag.spv");
+        GLuint lightingVertexShader = createShaderSPIRV(GL_VERTEX_SHADER, shaderBinPath + "/lighting.vert.spv");
+        GLuint lightingFragmentShader = createShaderSPIRV(GL_FRAGMENT_SHADER, shaderBinPath + "/lighting.frag.spv");
         lightingShaderProgram = createProgram({lightingVertexShader, lightingFragmentShader});
         glDeleteShader(lightingVertexShader);
         glDeleteShader(lightingFragmentShader);
     }
     GLuint shadowShaderProgram;
     {
-        GLuint shadowVertexShader = createShaderSPIRV(GL_VERTEX_SHADER, shaderBinPath / "shadow.vert.spv");
-        GLuint shadowGeomShader = createShaderSPIRV(GL_GEOMETRY_SHADER, shaderBinPath / "shadow.geom.spv");
+        GLuint shadowVertexShader = createShaderSPIRV(GL_VERTEX_SHADER, shaderBinPath + "/shadow.vert.spv");
+        GLuint shadowGeomShader = createShaderSPIRV(GL_GEOMETRY_SHADER, shaderBinPath + "/shadow.geom.spv");
         shadowShaderProgram = createProgram({shadowVertexShader, shadowGeomShader});
         glDeleteShader(shadowVertexShader);
         glDeleteShader(shadowGeomShader);

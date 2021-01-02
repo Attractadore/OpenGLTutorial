@@ -3,7 +3,7 @@
 #include "glad.h"
 
 #include <array>
-#include <filesystem>
+#include <string>
 
-GLuint createTexture2D(const std::filesystem::path& path, GLenum texFormat, GLenum dataFormat, GLenum dataType);
-GLuint createTextureCubeMap(const std::array<std::filesystem::path, 6>& paths, GLenum texFormat, GLenum dataFormat, GLenum dataType);
+GLuint createTexture2D(const std::string& path, GLenum texFormat, GLenum dataFormat, GLenum dataType);
+GLuint createTextureCubeMap(const std::array<std::string, 6>& paths, GLenum texFormat, GLenum dataFormat, GLenum dataType);

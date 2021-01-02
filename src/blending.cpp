@@ -13,10 +13,10 @@
 #include <algorithm>
 
 int main() {
-    const std::filesystem::path assetsPath = "assets";
-    const std::filesystem::path meshesPath = assetsPath / "meshes";
-    const std::filesystem::path texturePath = assetsPath / "textures" / "blending";
-    const std::filesystem::path shaderBinPath = assetsPath / "shaders" / "bin" / "blending";
+    const std::string assetsPath = "assets";
+    const std::string meshesPath = assetsPath + "/meshes";
+    const std::string texturePath = assetsPath + "/textures/blending";
+    const std::string shaderBinPath = assetsPath + "/shaders/bin/blending";
 
     int viewportW = 1280;
     int viewportH = 720;
@@ -37,12 +37,12 @@ int main() {
     glEnable(GL_CULL_FACE);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
-    MeshGLRepr cubeMesh = createMeshGLRepr(meshesPath / "cube.obj");
-    MeshGLRepr planeMesh = createMeshGLRepr(meshesPath / "transparentplane.obj");
-    MeshGLRepr groundMesh = createMeshGLRepr(meshesPath / "circularplane.obj");
+    MeshGLRepr cubeMesh = createMeshGLRepr(meshesPath + "/cube.obj");
+    MeshGLRepr planeMesh = createMeshGLRepr(meshesPath + "/transparentplane.obj");
+    MeshGLRepr groundMesh = createMeshGLRepr(meshesPath + "/circularplane.obj");
 
-    GLuint diffuseTexture = createTexture2D(texturePath / ".." / "container2.png", GL_SRGB8_ALPHA8, GL_RGBA, GL_UNSIGNED_BYTE);
-    GLuint windowTexture = createTexture2D(texturePath / "window.png", GL_SRGB8_ALPHA8, GL_RGBA, GL_UNSIGNED_BYTE);
+    GLuint diffuseTexture = createTexture2D(texturePath + "/../container2.png", GL_SRGB8_ALPHA8, GL_RGBA, GL_UNSIGNED_BYTE);
+    GLuint windowTexture = createTexture2D(texturePath + "/window.png", GL_SRGB8_ALPHA8, GL_RGBA, GL_UNSIGNED_BYTE);
 
     GLuint clampSampler;
     glCreateSamplers(1, &clampSampler);
@@ -59,8 +59,8 @@ int main() {
 
     GLuint diffuseShaderProgram;
     {
-        GLuint diffuseVertexShader = createShaderSPIRV(GL_VERTEX_SHADER, shaderBinPath / "diffuse.vert.spv");
-        GLuint diffuseFragmentShader = createShaderSPIRV(GL_FRAGMENT_SHADER, shaderBinPath / "diffuse.frag.spv");
+        GLuint diffuseVertexShader = createShaderSPIRV(GL_VERTEX_SHADER, shaderBinPath + "/diffuse.vert.spv");
+        GLuint diffuseFragmentShader = createShaderSPIRV(GL_FRAGMENT_SHADER, shaderBinPath + "/diffuse.frag.spv");
         diffuseShaderProgram = createProgram({diffuseVertexShader, diffuseFragmentShader});
         glDeleteShader(diffuseVertexShader);
         glDeleteShader(diffuseFragmentShader);

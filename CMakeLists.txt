@@ -142,6 +142,7 @@ add_shader(shadows "shadows/lighting.vert")
 add_shader(shadows "shadows/lighting.frag")
 add_shader(shadows "shadows/shadow.vert")
 add_shader(shadows "shadows/shadow.geom")
+add_shader(shadows "shadows/Min.comp")
 
 project(instancing)
 add_executable(instancing "src/instancing.cpp")

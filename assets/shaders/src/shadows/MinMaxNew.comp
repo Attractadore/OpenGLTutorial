@@ -1,0 +1,26 @@
+#version 460 core
+#extension GL_KHR_shader_subgroup_arithmetic : require
+
+layout(local_size_x = 16, local_size_y = 16) in;
+
+layout(binding = 0, rg8ui) restrict readonly uniform uimage2D inData;
+
+layout(std430, binding = 1) buffer outData {
+    uint minDepth;
+    uint maxDepth;
+};
+
+layout(location = 0) uniform uvec2 readSize;
+
+void main() {
+    const uint tidx = gl_LocalInvocationIndex;
+    bool inBounds = all(lessThan(gl_GlobalInvocationID.xy, readSize));
+    uvec2 work = inBounds ? imageLoad(inData, ivec2(gl_GlobalInvocationID.xy)).rg : uvec2(-1, 0);
+    work.x = subgroupMax(work.x);
+    work.y = subgroupMin(work.y);
+
+    if (subgroupElect()) {
+        atomicMin(minDepth, work.x);
+        atomicMax(maxDepth, work.y);
+    }
+}

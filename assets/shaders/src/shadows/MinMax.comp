@@ -1,0 +1,43 @@
+#version 460 core
+
+layout(local_size_x = 16, local_size_y = 4) in;
+
+layout(binding = 0, rg8) restrict readonly uniform image2D inData;
+layout(binding = 1, rg8) restrict writeonly uniform image2D outData;
+
+layout(location = 0) uniform uvec2 readSize;
+
+const uint workDataSize = gl_WorkGroupSize.x * gl_WorkGroupSize.y;
+
+shared vec2 workData[workDataSize];
+
+vec2 MinMax(vec2 a, vec2 b) {
+    return vec2(min(a.x, b.x), max(a.y, b.y));
+}
+
+void main() {
+    const uint tidx = gl_LocalInvocationIndex;
+    workData[tidx] = vec2(1.0F, 0.0F);
+    uvec2 read1 = uvec2(gl_GlobalInvocationID.x, 2 * gl_GlobalInvocationID.y);
+    uvec2 read2 = uvec2(read1.x, read1.y + 1);
+    if (all(lessThan(read1, readSize))) {
+        workData[tidx] = MinMax(workData[tidx], imageLoad(inData, ivec2(read1)).rg);
+    }
+    if (all(lessThan(read2, readSize))) {
+        workData[tidx] = MinMax(workData[tidx], imageLoad(inData, ivec2(read2)).rg);
+    }
+    memoryBarrierShared();
+    barrier();
+
+    for (uint i = workDataSize / 2; i > 0; i /= 2) {
+        if (tidx < i) {
+            workData[tidx] = MinMax(workData[tidx], workData[tidx + i]);
+        }
+        memoryBarrierShared();
+        barrier();
+    }
+
+    if (tidx == 0) {
+        imageStore(outData, ivec2(gl_WorkGroupID.xy), vec4(workData[0], 0.0F, 0.0F));
+    }
+}

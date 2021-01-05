@@ -55,7 +55,7 @@ find_program(GLSLC NAMES glslc REQUIRED)
 
 set(GLSLC_FLAGS_DEBUG "-g")
 set(GLSLC_FLAGS_RELEASE "-O")
-set(GLSLC_FLAGS "--target-env=opengl")
+set(GLSLC_FLAGS "--target-env=opengl --target-spv=spv1.5")
 if (${CMAKE_BUILD_TYPE} STREQUAL "Debug")
     set(GLSLC_FLAGS "${GLSLC_FLAGS} ${GLSLC_FLAGS_DEBUG}")
 elseif(${CMAKE_BUILD_TYPE} STREQUAL "Release")

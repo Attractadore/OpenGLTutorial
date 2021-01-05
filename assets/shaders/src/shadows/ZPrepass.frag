@@ -1,7 +1,7 @@
-#version 460 core
+#version 460
 
-layout(location = 0) out vec2 depth;
+layout(location = 0) out float depth;
 
 void main() {
-    depth = vec2(gl_FragCoord.z);
+    depth = gl_FragCoord.z;
 }

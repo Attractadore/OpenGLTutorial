@@ -213,7 +213,7 @@ int main() {
     glNamedRenderbufferStorage(drawColorRenderbuffer, GL_RGBA8, viewportW, viewportH);
     GLuint drawDepthRenderbuffer = 0;
     glCreateRenderbuffers(1, &drawDepthRenderbuffer);
-    glNamedRenderbufferStorage(drawDepthRenderbuffer, GL_DEPTH_COMPONENT, viewportW, viewportH);
+    glNamedRenderbufferStorage(drawDepthRenderbuffer, GL_DEPTH_COMPONENT32, viewportW, viewportH);
 
     // Working with depth textures in compute shaders is not supported.
     // Use separate texture array and write depth to it as color during a z only prepass.

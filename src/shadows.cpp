@@ -175,7 +175,7 @@ int main() {
     }
     GLuint reduceShaderProgram = 0;
     {
-        GLuint minShader = createShaderSPIRV(GL_COMPUTE_SHADER, shaderBinPath + "/MinMaxNew.comp.spv");
+        GLuint minShader = createShaderSPIRV(GL_COMPUTE_SHADER, shaderBinPath + "/MinMax.comp.spv");
         reduceShaderProgram = createProgram({minShader});
         glDeleteShader(minShader);
     }

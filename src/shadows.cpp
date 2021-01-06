@@ -175,7 +175,7 @@ int main() {
     }
     GLuint reduceShaderProgram = 0;
     {
-        GLuint minShader = createShaderSPIRV(GL_COMPUTE_SHADER, shaderBinPath + "/MinMax.comp.spv");
+        GLuint minShader = createShaderSPIRV(GL_COMPUTE_SHADER, shaderBinPath + "/Reduce.comp.spv");
         reduceShaderProgram = createProgram({minShader});
         glDeleteShader(minShader);
     }
@@ -217,7 +217,7 @@ int main() {
 
     // Working with depth textures in compute shaders is not supported.
     // Use separate texture array and write depth to it as color during a z only prepass.
-    std::size_t queueSize = 2;
+    std::size_t queueSize = 3;
     GLuint drawDepthTextureArray = 0;
     glCreateTextures(GL_TEXTURE_2D_ARRAY, 1, &drawDepthTextureArray);
     GLenum drawDepthInternalFormat = GL_R8;
@@ -225,10 +225,17 @@ int main() {
     glTextureStorage3D(drawDepthTextureArray, 1, drawDepthInternalFormat, viewportW, viewportH, queueSize);
 
     std::vector<GLuint> writeDepthBuffers(queueSize);
-    glCreateBuffers(queueSize, writeDepthBuffers.data());
+    glCreateBuffers(writeDepthBuffers.size(), writeDepthBuffers.data());
     for (const auto& writeDepthBuffer: writeDepthBuffers) {
-        constexpr GLuint defaultDepth = 0;
-        glNamedBufferStorage(writeDepthBuffer, sizeof(defaultDepth), &defaultDepth, 0);
+        glNamedBufferStorage(writeDepthBuffer, sizeof(GLuint), nullptr, 0);
+    }
+
+    std::vector<GLuint> readDepthBuffers(queueSize);
+    glCreateBuffers(readDepthBuffers.size(), readDepthBuffers.data());
+    for (const auto& readDepthBuffer: readDepthBuffers) {
+        // GL_CLIENT_STORAGE_BIT alone is not enough to get cpu side storage
+        glNamedBufferStorage(readDepthBuffer, sizeof(GLuint), nullptr, GL_CLIENT_STORAGE_BIT | GL_MAP_READ_BIT);
+        glClearNamedBufferData(readDepthBuffer, drawDepthInternalFormat, drawDepthFormat, GL_UNSIGNED_INT, nullptr);
     }
 
     std::size_t drawI = 0;
@@ -257,8 +264,7 @@ int main() {
         // Get min depth
 
         GLuint minDepth = 0;
-        glMemoryBarrier(GL_BUFFER_UPDATE_BARRIER_BIT);
-        glGetNamedBufferSubData(writeDepthBuffers[drawI], 0, sizeof(minDepth), &minDepth);
+        glGetNamedBufferSubData(readDepthBuffers[drawI], 0, sizeof(minDepth), &minDepth);
         {
             constexpr GLuint clearDepth = -1U;
             glClearNamedBufferData(writeDepthBuffers[drawI], drawDepthInternalFormat, drawDepthFormat, GL_UNSIGNED_INT, &clearDepth);
@@ -287,6 +293,21 @@ int main() {
 
         glNamedFramebufferTextureLayer(drawFramebuffer, GL_COLOR_ATTACHMENT1, 0, 0, 0);
 
+        // Dispatch compute for min depth
+
+        glUseProgram(reduceShaderProgram);
+        glProgramUniform2ui(reduceShaderProgram, 0, viewportW, viewportH);
+        glBindImageTexture(0, drawDepthTextureArray, 0, GL_FALSE, drawI, GL_READ_ONLY, drawDepthInternalFormat);
+        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, writeDepthBuffers[drawI]);
+        {
+            const std::size_t workGroupsX = Ceil(viewportW, workGroupSize.x);
+            const std::size_t workGroupsY = Ceil(viewportH, workGroupSize.y * 2);
+            glDispatchCompute(workGroupsX, workGroupsY, 1);
+        }
+        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, 0);
+        glMemoryBarrier(GL_BUFFER_UPDATE_BARRIER_BIT);
+        glCopyNamedBufferSubData(writeDepthBuffers[drawI], readDepthBuffers[drawI], 0, 0, sizeof(GLuint));
+
         // Generate shadows
 
         // TODO:
@@ -306,10 +327,12 @@ int main() {
         glEnable(GL_DEPTH_CLAMP);
         glClear(GL_DEPTH_BUFFER_BIT);
 
-        glUseProgram(shadowShaderProgram);
         glProgramUniformMatrix4fv(shadowShaderProgram, 0, 1, GL_FALSE, glm::value_ptr(bunnyModel));
         glProgramUniform1i(shadowShaderProgram, 10, shadowMapNumCascades);
         glProgramUniformMatrix4fv(shadowShaderProgram, 11, shadowMapNumCascades, GL_FALSE, DataPtr(cascadeProperties.transforms));
+
+        glUseProgram(shadowShaderProgram);
+
         glBindVertexArray(bunnyMesh.VAO);
         glDrawElements(GL_TRIANGLES, bunnyMesh.numIndices, GL_UNSIGNED_INT, nullptr);
 
@@ -317,18 +340,6 @@ int main() {
         glViewport(0, 0, viewportW, viewportH);
 
         // Finish generating shadows
-
-        // Dispatch compute for min depth
-
-        glUseProgram(reduceShaderProgram);
-        glProgramUniform2ui(reduceShaderProgram, 0, viewportW, viewportH);
-        glBindImageTexture(0, drawDepthTextureArray, 0, GL_FALSE, drawI, GL_READ_ONLY, drawDepthInternalFormat);
-        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, writeDepthBuffers[drawI]);
-        {
-            std::size_t workGroupsX = Ceil(viewportW, workGroupSize.x);
-            std::size_t workGroupsY = Ceil(viewportH, workGroupSize.y);
-            glDispatchCompute(workGroupsX, workGroupsY, 1);
-        }
 
         // Main drawing pass
 
@@ -341,8 +352,8 @@ int main() {
 
         glDepthFunc(GL_EQUAL);
 
+        glProgramUniformMatrix4fv(lightingShaderProgram, 0, 1, GL_FALSE, glm::value_ptr(projView));
         glProgramUniform3fv(lightingShaderProgram, 20, 1, glm::value_ptr(lightDir));
-
         glProgramUniform1i(lightingShaderProgram, 21, shadowMapNumCascades);
         glProgramUniformMatrix4fv(lightingShaderProgram, 22, shadowMapNumCascades, GL_FALSE, DataPtr(cascadeProperties.transforms));
         glProgramUniform4fv(lightingShaderProgram, 30, 1, glm::value_ptr(cascadeProperties.depths));
@@ -351,16 +362,15 @@ int main() {
         glProgramUniform3fv(lightingShaderProgram, 40, 1, glm::value_ptr(camera->cameraPos));
 
         glUseProgram(lightingShaderProgram);
+
         glBindTextureUnit(0, shadowMapArray);
         glBindSampler(0, shadowSampler);
 
-        glProgramUniformMatrix4fv(lightingShaderProgram, 0, 1, GL_FALSE, glm::value_ptr(projView));
         glProgramUniformMatrix4fv(lightingShaderProgram, 1, 1, GL_FALSE, glm::value_ptr(bunnyModel));
         glProgramUniformMatrix3fv(lightingShaderProgram, 2, 1, GL_FALSE, glm::value_ptr(bunnyNormal));
         glBindVertexArray(bunnyMesh.VAO);
         glDrawElements(GL_TRIANGLES, bunnyMesh.numIndices, GL_UNSIGNED_INT, nullptr);
 
-        glProgramUniformMatrix4fv(lightingShaderProgram, 0, 1, GL_FALSE, glm::value_ptr(projView));
         glProgramUniformMatrix4fv(lightingShaderProgram, 1, 1, GL_FALSE, glm::value_ptr(groundModel));
         glProgramUniformMatrix3fv(lightingShaderProgram, 2, 1, GL_FALSE, glm::value_ptr(groundNormal));
         glBindVertexArray(groundMesh.VAO);
@@ -370,10 +380,10 @@ int main() {
 
         glDepthFunc(GL_LESS);
 
-        drawI = (drawI + 1) % queueSize;
-
         glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
         glBlitFramebuffer(0, 0, viewportW, viewportH, 0, 0, viewportW, viewportH, GL_COLOR_BUFFER_BIT, GL_LINEAR);
+
+        drawI = (drawI + 1) % queueSize;
 
         glfwSwapBuffers(window);
         glfwPollEvents();
@@ -382,6 +392,7 @@ int main() {
     deleteMeshGLRepr(bunnyMesh);
     deleteMeshGLRepr(groundMesh);
     glDeleteBuffers(writeDepthBuffers.size(), writeDepthBuffers.data());
+    glDeleteBuffers(readDepthBuffers.size(), readDepthBuffers.data());
     glDeleteSamplers(1, &shadowSampler);
     glDeleteTextures(1, &shadowMapArray);
     glDeleteTextures(1, &drawDepthTextureArray);

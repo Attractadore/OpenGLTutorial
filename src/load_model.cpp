@@ -57,7 +57,7 @@ MeshData loadMesh(const std::string& path, std::size_t meshIndex) {
 }
 
 MeshGLRepr createMeshGLRepr(const std::string& scenePath, std::size_t meshIndex) {
-    MeshGLRepr repr;
+    MeshGLRepr repr = {.model{1.0F}, .normal{1.0F}};
     glCreateBuffers(1, &repr.VBO);
     glCreateBuffers(1, &repr.EBO);
     glCreateVertexArrays(1, &repr.VAO);
@@ -73,7 +73,7 @@ void deleteMeshGLRepr(MeshGLRepr& repr) {
     glDeleteBuffers(1, &repr.VBO);
     glDeleteBuffers(1, &repr.EBO);
     glDeleteVertexArrays(1, &repr.VAO);
-    repr = {0, 0, 0, 0};
+    repr = {};
 }
 
 void storeMesh(GLuint VAO, GLuint VBO, GLuint EBO) {

@@ -2,6 +2,8 @@
 
 #include "glad.h"
 
+#include <glm/mat3x3.hpp>
+#include <glm/mat4x4.hpp>
 #include <glm/vec2.hpp>
 #include <glm/vec3.hpp>
 
@@ -22,10 +24,14 @@ struct MeshData {
 };
 
 struct MeshGLRepr {
+    glm::mat4 model;
+    glm::mat3 normal;
     GLuint VBO;
     GLuint EBO;
     GLuint VAO;
     GLuint numIndices;
+    bool bCullFaces : 1;
+    bool bCastsShadows : 1;
 };
 
 MeshData loadMesh(const std::string& path, std::size_t meshIndex = 0);

@@ -119,7 +119,7 @@ T const* DataPtr(std::vector<glm::mat<C, R, T, Q>> const& data) {
     return reinterpret_cast<T const*>(data.data());
 }
 
-std::size_t Ceil(std::size_t x, std::size_t y) {
+std::size_t CeilDiv(std::size_t x, std::size_t y) {
     return x / y + (x % y != 0);
 }
 
@@ -346,8 +346,8 @@ int main() {
         glBindImageTexture(0, drawDepthTextureArray, 0, GL_FALSE, drawI, GL_READ_ONLY, drawDepthInternalFormat);
         glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, readDepthBuffers[drawI]);
         {
-            const std::size_t workGroupsX = Ceil(viewportW, workGroupSize.x);
-            const std::size_t workGroupsY = Ceil(viewportH, workGroupSize.y);
+            const std::size_t workGroupsX = CeilDiv(viewportW, workGroupSize.x);
+            const std::size_t workGroupsY = CeilDiv(viewportH, workGroupSize.y);
             glDispatchCompute(workGroupsX, workGroupsY, 1);
         }
         glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, 0);

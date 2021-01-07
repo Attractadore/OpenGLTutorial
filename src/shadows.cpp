@@ -283,12 +283,6 @@ int main() {
     GLenum drawDepthFormat = GL_RED;
     glTextureStorage3D(drawDepthTextureArray, 1, drawDepthInternalFormat, viewportW, viewportH, queueSize);
 
-    std::vector<GLuint> writeDepthBuffers(queueSize);
-    glCreateBuffers(writeDepthBuffers.size(), writeDepthBuffers.data());
-    for (const auto& writeDepthBuffer: writeDepthBuffers) {
-        glNamedBufferStorage(writeDepthBuffer, sizeof(GLuint), nullptr, 0);
-    }
-
     std::vector<GLuint> readDepthBuffers(queueSize);
     glCreateBuffers(readDepthBuffers.size(), readDepthBuffers.data());
     for (const auto& readDepthBuffer: readDepthBuffers) {
@@ -322,11 +316,12 @@ int main() {
 
         // Get min depth
 
+        glMemoryBarrier(GL_BUFFER_UPDATE_BARRIER_BIT);
         GLuint minDepth = 0;
         glGetNamedBufferSubData(readDepthBuffers[drawI], 0, sizeof(minDepth), &minDepth);
         {
             constexpr GLuint clearDepth = -1U;
-            glClearNamedBufferData(writeDepthBuffers[drawI], drawDepthInternalFormat, drawDepthFormat, GL_UNSIGNED_INT, &clearDepth);
+            glClearNamedBufferData(readDepthBuffers[drawI], drawDepthInternalFormat, drawDepthFormat, GL_UNSIGNED_INT, &clearDepth);
         }
 
         glm::mat4 projView = CameraManager::getProjectionMatrix() * CameraManager::getViewMatrix();
@@ -349,15 +344,13 @@ int main() {
         glUseProgram(reduceShaderProgram);
         glProgramUniform2ui(reduceShaderProgram, 0, viewportW, viewportH);
         glBindImageTexture(0, drawDepthTextureArray, 0, GL_FALSE, drawI, GL_READ_ONLY, drawDepthInternalFormat);
-        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, writeDepthBuffers[drawI]);
+        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, readDepthBuffers[drawI]);
         {
             const std::size_t workGroupsX = Ceil(viewportW, workGroupSize.x);
-            const std::size_t workGroupsY = Ceil(viewportH, workGroupSize.y * 2);
+            const std::size_t workGroupsY = Ceil(viewportH, workGroupSize.y);
             glDispatchCompute(workGroupsX, workGroupsY, 1);
         }
         glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, 0);
-        glMemoryBarrier(GL_BUFFER_UPDATE_BARRIER_BIT);
-        glCopyNamedBufferSubData(writeDepthBuffers[drawI], readDepthBuffers[drawI], 0, 0, sizeof(GLuint));
 
         // Generate shadows
 
@@ -425,7 +418,6 @@ int main() {
 
     deleteMeshGLRepr(bunnyMesh);
     deleteMeshGLRepr(groundMesh);
-    glDeleteBuffers(writeDepthBuffers.size(), writeDepthBuffers.data());
     glDeleteBuffers(readDepthBuffers.size(), readDepthBuffers.data());
     glDeleteSamplers(1, &shadowSampler);
     glDeleteTextures(1, &shadowMapArray);

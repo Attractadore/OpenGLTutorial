@@ -10,6 +10,8 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
 
+#include <algorithm>
+
 glm::vec3 getLightDir(glm::vec3 const& lightDir) {
     return glm::normalize(lightDir);
 }
@@ -121,6 +123,64 @@ std::size_t Ceil(std::size_t x, std::size_t y) {
     return x / y + (x % y != 0);
 }
 
+enum class ImpDrawTypes {
+    DepthOnly,
+    Shadows,
+    Color
+};
+
+template <ImpDrawTypes drawType>
+void ImpDrawMesh(GLuint program, glm::mat4 const& projView, MeshGLRepr const* mesh) {
+    if constexpr (drawType == ImpDrawTypes::DepthOnly) {
+        glProgramUniformMatrix4fv(program, 0, 1, GL_FALSE, glm::value_ptr(projView * mesh->model));
+    } else if constexpr (drawType == ImpDrawTypes::Shadows) {
+        glProgramUniformMatrix4fv(program, 0, 1, GL_FALSE, glm::value_ptr(mesh->model));
+    } else if constexpr (drawType == ImpDrawTypes::Color) {
+        glProgramUniformMatrix4fv(program, 0, 1, GL_FALSE, glm::value_ptr(projView));
+        glProgramUniformMatrix4fv(program, 1, 1, GL_FALSE, glm::value_ptr(mesh->model));
+        glProgramUniformMatrix3fv(program, 2, 1, GL_FALSE, glm::value_ptr(mesh->normal));
+    }
+
+    glBindVertexArray(mesh->VAO);
+    glDrawElements(GL_TRIANGLES, mesh->numIndices, GL_UNSIGNED_INT, nullptr);
+}
+
+template <ImpDrawTypes drawType>
+void ImpDrawMeshes(GLuint program, glm::mat4 const& projView, std::vector<MeshGLRepr*>& meshes) {
+    auto meshesEnd = [&meshes]() {
+        if constexpr (drawType == ImpDrawTypes::Shadows) {
+            return std::partition(meshes.begin(), meshes.end(), [](MeshGLRepr const* mesh) { return mesh->bCastsShadows; });
+        }
+        return meshes.end();
+    }();
+
+    auto unculledMeshesBegin = std::partition(meshes.begin(), meshesEnd, [](MeshGLRepr const* mesh) { return mesh->bCullFaces; });
+
+    glUseProgram(program);
+
+    glEnable(GL_CULL_FACE);
+    for (auto it = meshes.begin(); it < unculledMeshesBegin; ++it) {
+        ImpDrawMesh<drawType>(program, projView, *it);
+    }
+
+    glDisable(GL_CULL_FACE);
+    for (auto it = unculledMeshesBegin; it < meshesEnd; ++it) {
+        ImpDrawMesh<drawType>(program, projView, *it);
+    }
+}
+
+void DrawMeshesDepthOnly(GLuint program, glm::mat4 const& projView, std::vector<MeshGLRepr*>& meshes) {
+    ImpDrawMeshes<ImpDrawTypes::DepthOnly>(program, projView, meshes);
+}
+
+void DrawMeshShadows(GLuint program, std::vector<MeshGLRepr*>& meshes) {
+    ImpDrawMeshes<ImpDrawTypes::Shadows>(program, {}, meshes);
+}
+
+void DrawMeshesColor(GLuint program, glm::mat4 const& projView, std::vector<MeshGLRepr*>& meshes) {
+    ImpDrawMeshes<ImpDrawTypes::Color>(program, projView, meshes);
+}
+
 int main() {
     const std::string assetsPath = "assets";
     const std::string meshesPath = assetsPath + "/meshes/shadows";
@@ -144,14 +204,13 @@ int main() {
     activateGLDebugOutput();
     glEnable(GL_DEPTH_TEST);
     glEnable(GL_FRAMEBUFFER_SRGB);
-    glEnable(GL_CULL_FACE);
 
     MeshGLRepr bunnyMesh = createMeshGLRepr(meshesPath + "/bunny.obj");
-    glm::mat4 bunnyModel{1.0f};
-    glm::mat3 bunnyNormal{1.0f};
+    bunnyMesh.bCullFaces = true;
+    bunnyMesh.bCastsShadows = true;
     MeshGLRepr groundMesh = createMeshGLRepr(meshesPath + "/../circularplane.obj");
-    glm::mat4 groundModel = glm::scale(glm::mat4{1.0f}, glm::vec3{0.1f});
-    glm::mat3 groundNormal{1.0f};
+    groundMesh.model = glm::scale(glm::mat4{1.0f}, glm::vec3{0.1f});
+    std::vector<MeshGLRepr*> meshes = {&bunnyMesh, &groundMesh};
 
     GLuint lightingShaderProgram;
     {
@@ -281,15 +340,7 @@ int main() {
         glReadBuffer(GL_COLOR_ATTACHMENT1);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-        glUseProgram(zPrepassShaderProgram);
-
-        glProgramUniformMatrix4fv(zPrepassShaderProgram, 0, 1, GL_FALSE, glm::value_ptr(projView * bunnyModel));
-        glBindVertexArray(bunnyMesh.VAO);
-        glDrawElements(GL_TRIANGLES, bunnyMesh.numIndices, GL_UNSIGNED_INT, nullptr);
-
-        glProgramUniformMatrix4fv(zPrepassShaderProgram, 0, 1, GL_FALSE, glm::value_ptr(projView * groundModel));
-        glBindVertexArray(groundMesh.VAO);
-        glDrawElements(GL_TRIANGLES, groundMesh.numIndices, GL_UNSIGNED_INT, nullptr);
+        DrawMeshesDepthOnly(zPrepassShaderProgram, projView, meshes);
 
         glNamedFramebufferTextureLayer(drawFramebuffer, GL_COLOR_ATTACHMENT1, 0, 0, 0);
 
@@ -327,14 +378,10 @@ int main() {
         glEnable(GL_DEPTH_CLAMP);
         glClear(GL_DEPTH_BUFFER_BIT);
 
-        glProgramUniformMatrix4fv(shadowShaderProgram, 0, 1, GL_FALSE, glm::value_ptr(bunnyModel));
         glProgramUniform1i(shadowShaderProgram, 10, shadowMapNumCascades);
         glProgramUniformMatrix4fv(shadowShaderProgram, 11, shadowMapNumCascades, GL_FALSE, DataPtr(cascadeProperties.transforms));
 
-        glUseProgram(shadowShaderProgram);
-
-        glBindVertexArray(bunnyMesh.VAO);
-        glDrawElements(GL_TRIANGLES, bunnyMesh.numIndices, GL_UNSIGNED_INT, nullptr);
+        DrawMeshShadows(shadowShaderProgram, meshes);
 
         glDisable(GL_DEPTH_CLAMP);
         glViewport(0, 0, viewportW, viewportH);
@@ -358,25 +405,12 @@ int main() {
         glProgramUniformMatrix4fv(lightingShaderProgram, 22, shadowMapNumCascades, GL_FALSE, DataPtr(cascadeProperties.transforms));
         glProgramUniform4fv(lightingShaderProgram, 30, 1, glm::value_ptr(cascadeProperties.depths));
         glProgramUniform4fv(lightingShaderProgram, 31, 1, glm::value_ptr(cascadeProperties.sampleSizes));
-
         glProgramUniform3fv(lightingShaderProgram, 40, 1, glm::value_ptr(camera->cameraPos));
-
-        glUseProgram(lightingShaderProgram);
 
         glBindTextureUnit(0, shadowMapArray);
         glBindSampler(0, shadowSampler);
 
-        glProgramUniformMatrix4fv(lightingShaderProgram, 1, 1, GL_FALSE, glm::value_ptr(bunnyModel));
-        glProgramUniformMatrix3fv(lightingShaderProgram, 2, 1, GL_FALSE, glm::value_ptr(bunnyNormal));
-        glBindVertexArray(bunnyMesh.VAO);
-        glDrawElements(GL_TRIANGLES, bunnyMesh.numIndices, GL_UNSIGNED_INT, nullptr);
-
-        glProgramUniformMatrix4fv(lightingShaderProgram, 1, 1, GL_FALSE, glm::value_ptr(groundModel));
-        glProgramUniformMatrix3fv(lightingShaderProgram, 2, 1, GL_FALSE, glm::value_ptr(groundNormal));
-        glBindVertexArray(groundMesh.VAO);
-        glDisable(GL_CULL_FACE);
-        glDrawElements(GL_TRIANGLES, groundMesh.numIndices, GL_UNSIGNED_INT, nullptr);
-        glEnable(GL_CULL_FACE);
+        DrawMeshesColor(lightingShaderProgram, projView, meshes);
 
         glDepthFunc(GL_LESS);
 

@@ -85,8 +85,12 @@ std::vector<float> Partition(float nearPlane, float farPlane, std::uint8_t numCa
     return cascadeBounds;
 }
 
-float ConvertDepth(float nearPlane, float farPlane, float z) {
-    return (z - nearPlane) / (farPlane - nearPlane) * farPlane / z;
+float DistanceToDepth(float distance, float nearPlane, float farPlane) {
+    return (distance - nearPlane) / (farPlane - nearPlane) * farPlane / distance;
+}
+
+float DepthToDistace(float depth, float near_plane, float far_plane) {
+    return 1.0F / glm::mix(1.0F / near_plane, 1.0F / far_plane, depth);
 }
 
 struct CascadeProperties {
@@ -108,7 +112,7 @@ CascadeProperties GetCascadeProperties(float nearPlane, float farPlane, std::uin
         const glm::mat4 lightProj = getLightProj(lightView, cascadeProjViewInv, boundingBoxSize, sampleSize);
         properties.transforms.push_back(lightProj * lightView);
         properties.sampleSizes[i] = sampleSize;
-        const float nDepth = ConvertDepth(nearPlane, farPlane, n);
+        const float nDepth = DistanceToDepth(n, nearPlane, farPlane);
         properties.depths[i] = nDepth;
     }
     return properties;

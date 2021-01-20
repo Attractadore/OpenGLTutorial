@@ -98,9 +98,9 @@ struct CascadeProperties {
     glm::vec4 sampleSizes, depths;
 };
 
-CascadeProperties GetCascadeProperties(float nearPlane, float farPlane, std::uint8_t numCascades, std::uint16_t shadowRes, glm::mat4 const& m4View, float verticalFOV, float aspectRatio, glm::mat4 const& lightView) {
+CascadeProperties GetCascadeProperties(float cascades_near_plane, float cascades_far_plane, std::uint8_t numCascades, std::uint16_t shadowRes, glm::mat4 const& m4View, float camera_near_plane, float camera_far_plane, float verticalFOV, float aspectRatio, glm::mat4 const& lightView) {
     CascadeProperties properties;
-    const auto cascadeBounds = Partition(nearPlane, farPlane, numCascades);
+    const auto cascadeBounds = Partition(cascades_near_plane, cascades_far_plane, numCascades);
     for (std::size_t i = 0; i < numCascades; i++) {
         const float n = cascadeBounds[i];
         const float f = cascadeBounds[i + 1];
@@ -112,7 +112,7 @@ CascadeProperties GetCascadeProperties(float nearPlane, float farPlane, std::uin
         const glm::mat4 lightProj = getLightProj(lightView, cascadeProjViewInv, boundingBoxSize, sampleSize);
         properties.transforms.push_back(lightProj * lightView);
         properties.sampleSizes[i] = sampleSize;
-        const float nDepth = DistanceToDepth(n, nearPlane, farPlane);
+        const float nDepth = DistanceToDepth(n, camera_near_plane, camera_far_plane);
         properties.depths[i] = nDepth;
     }
     return properties;
@@ -283,7 +283,7 @@ int main() {
     std::size_t queueSize = 3;
     GLuint drawDepthTextureArray = 0;
     glCreateTextures(GL_TEXTURE_2D_ARRAY, 1, &drawDepthTextureArray);
-    GLenum drawDepthInternalFormat = GL_R8;
+    GLenum drawDepthInternalFormat = GL_R16;
     GLenum drawDepthFormat = GL_RED;
     glTextureStorage3D(drawDepthTextureArray, 1, drawDepthInternalFormat, viewportW, viewportH, queueSize);
 
@@ -368,7 +368,15 @@ int main() {
         //
         // PCF
 
-        auto cascadeProperties = GetCascadeProperties(CameraManager::getNearPlane(), CameraManager::getFarPlane(), shadowMapNumCascades, shadowMapRes, CameraManager::getViewMatrix(), CameraManager::getVerticalFOV(), CameraManager::getAspectRatio(), lightView);
+        const float f_min_depth = float(minDepth) / ((1 << 16) - 1);
+        const float cascades_near_plane = DepthToDistace(f_min_depth, CameraManager::getNearPlane(), CameraManager::getFarPlane());
+        const float cascades_far_plane = CameraManager::getFarPlane();
+        std::cout << "Partition from " << cascades_near_plane << " to " << cascades_far_plane << '\n';
+
+        auto cascadeProperties = GetCascadeProperties(cascades_near_plane, cascades_far_plane, shadowMapNumCascades, shadowMapRes,
+                                                      CameraManager::getViewMatrix(),
+                                                      CameraManager::getNearPlane(), CameraManager::getFarPlane(),
+                                                      CameraManager::getVerticalFOV(), CameraManager::getAspectRatio(), lightView);
 
         glBindFramebuffer(GL_FRAMEBUFFER, shadowFramebuffer);
         glViewport(0, 0, shadowMapRes, shadowMapRes);

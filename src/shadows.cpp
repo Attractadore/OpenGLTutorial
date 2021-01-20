@@ -73,15 +73,15 @@ glm::mat4 getLightProj(glm::mat4 const& lightView, glm::mat4 const& cameraProjVi
     return lightProj;
 }
 
-std::vector<float> Partition(float nearPlane, float farPlane, std::uint8_t numCascades) {
-    std::vector<float> cascadeBounds;
+std::vector<float> Partition(const float nearPlane, const float farPlane, const std::size_t numCascades) {
+    std::vector<float> cascadeBounds(numCascades + 1);
     const float cascadeScale = std::pow(farPlane / nearPlane, 1.0f / numCascades);
     float cascadeNearPlane = nearPlane;
     for (std::uint8_t i = 0; i < numCascades; i++) {
-        cascadeBounds.push_back(cascadeNearPlane);
+        cascadeBounds[i] = cascadeNearPlane;
         cascadeNearPlane *= cascadeScale;
     }
-    cascadeBounds.push_back(farPlane);
+    cascadeBounds[numCascades] = farPlane;
     return cascadeBounds;
 }
 
@@ -140,7 +140,7 @@ void ImpDrawMesh(GLuint program, glm::mat4 const& projView, MeshGLRepr const* me
     } else if constexpr (drawType == ImpDrawTypes::Shadows) {
         glProgramUniformMatrix4fv(program, 0, 1, GL_FALSE, glm::value_ptr(mesh->model));
     } else if constexpr (drawType == ImpDrawTypes::Color) {
-        glProgramUniformMatrix4fv(program, 0, 1, GL_FALSE, glm::value_ptr(projView));
+        glProgramUniformMatrix4fv(program, 0, 1, GL_FALSE, glm::value_ptr(projView * mesh->model));
         glProgramUniformMatrix4fv(program, 1, 1, GL_FALSE, glm::value_ptr(mesh->model));
         glProgramUniformMatrix3fv(program, 2, 1, GL_FALSE, glm::value_ptr(mesh->normal));
     }
@@ -283,16 +283,15 @@ int main() {
     std::size_t queueSize = 3;
     GLuint drawDepthTextureArray = 0;
     glCreateTextures(GL_TEXTURE_2D_ARRAY, 1, &drawDepthTextureArray);
-    GLenum drawDepthInternalFormat = GL_R16;
-    GLenum drawDepthFormat = GL_RED;
+    GLenum drawDepthInternalFormat = GL_RG16;
+    GLenum drawDepthFormat = GL_RG;
     glTextureStorage3D(drawDepthTextureArray, 1, drawDepthInternalFormat, viewportW, viewportH, queueSize);
 
-    std::vector<GLuint> readDepthBuffers(queueSize);
+    std::vector<GLuint> readDepthBuffers(2 * queueSize);
     glCreateBuffers(readDepthBuffers.size(), readDepthBuffers.data());
     for (const auto& readDepthBuffer: readDepthBuffers) {
         // GL_CLIENT_STORAGE_BIT alone is not enough to get cpu side storage
-        glNamedBufferStorage(readDepthBuffer, sizeof(GLuint), nullptr, GL_CLIENT_STORAGE_BIT | GL_MAP_READ_BIT);
-        glClearNamedBufferData(readDepthBuffer, drawDepthInternalFormat, drawDepthFormat, GL_UNSIGNED_INT, nullptr);
+        glNamedBufferStorage(readDepthBuffer, sizeof(GLuint[2]), nullptr, GL_CLIENT_STORAGE_BIT | GL_MAP_READ_BIT);
     }
 
     std::size_t drawI = 0;
@@ -318,14 +317,16 @@ int main() {
             camera->cameraPos += float(deltaTime * cameraSpeed) * cameraMovementInput;
         }
 
-        // Get min depth
+        // Get min and max depth
 
         glMemoryBarrier(GL_BUFFER_UPDATE_BARRIER_BIT);
-        GLuint minDepth = 0;
-        glGetNamedBufferSubData(readDepthBuffers[drawI], 0, sizeof(minDepth), &minDepth);
+        glm::uvec2 frame_depths;
+        glGetNamedBufferSubData(readDepthBuffers[drawI], 0, sizeof(frame_depths), glm::value_ptr(frame_depths));
         {
-            constexpr GLuint clearDepth = -1U;
-            glClearNamedBufferData(readDepthBuffers[drawI], drawDepthInternalFormat, drawDepthFormat, GL_UNSIGNED_INT, &clearDepth);
+            constexpr GLuint clear_min_depth = -1U;
+            constexpr GLuint clear_max_depth = 0;
+            glClearNamedBufferSubData(readDepthBuffers[drawI], drawDepthInternalFormat, 0, sizeof(GLuint), drawDepthFormat, GL_UNSIGNED_INT, &clear_min_depth);
+            glClearNamedBufferSubData(readDepthBuffers[drawI], drawDepthInternalFormat, sizeof(GLuint), sizeof(GLuint), drawDepthFormat, GL_UNSIGNED_INT, &clear_max_depth);
         }
 
         glm::mat4 projView = CameraManager::getProjectionMatrix() * CameraManager::getViewMatrix();
@@ -334,9 +335,13 @@ int main() {
 
         glBindFramebuffer(GL_FRAMEBUFFER, drawFramebuffer);
         glNamedFramebufferTextureLayer(drawFramebuffer, GL_COLOR_ATTACHMENT1, drawDepthTextureArray, 0, drawI);
-        glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
         glDrawBuffer(GL_COLOR_ATTACHMENT1);
         glReadBuffer(GL_COLOR_ATTACHMENT1);
+
+        glDepthFunc(GL_LESS);
+        glDepthMask(GL_TRUE);
+
+        glClearColor(1.0f, 0.0f, 1.0f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
         DrawMeshesDepthOnly(zPrepassShaderProgram, projView, meshes);
@@ -368,10 +373,15 @@ int main() {
         //
         // PCF
 
-        const float f_min_depth = float(minDepth) / ((1 << 16) - 1);
-        const float cascades_near_plane = DepthToDistace(f_min_depth, CameraManager::getNearPlane(), CameraManager::getFarPlane());
-        const float cascades_far_plane = CameraManager::getFarPlane();
-        std::cout << "Partition from " << cascades_near_plane << " to " << cascades_far_plane << '\n';
+        const glm::vec2 f_frame_depths = glm::vec2(frame_depths) / float((1 << 16) - 1);
+        const float f_min_depth = f_frame_depths[0];
+        const float f_max_depth = f_frame_depths[1];
+        const float cameraBias = queueSize * cameraSpeed / 30.0f;
+        const float cascades_near_plane = std::max(DepthToDistace(f_min_depth, CameraManager::getNearPlane(), CameraManager::getFarPlane()) - cameraBias,
+                                                   CameraManager::getNearPlane());
+        const float cascades_far_plane = std::min(DepthToDistace(f_max_depth, CameraManager::getNearPlane(), CameraManager::getFarPlane()) + cameraBias,
+                                                  CameraManager::getFarPlane());
+        //std::cout << cascades_near_plane << ' ' << cascades_far_plane << '\n';
 
         auto cascadeProperties = GetCascadeProperties(cascades_near_plane, cascades_far_plane, shadowMapNumCascades, shadowMapRes,
                                                       CameraManager::getViewMatrix(),
@@ -399,10 +409,11 @@ int main() {
         glDrawBuffer(GL_COLOR_ATTACHMENT0);
         glReadBuffer(GL_COLOR_ATTACHMENT0);
 
+        glDepthFunc(GL_EQUAL);
+        glDepthMask(GL_FALSE);
+
         glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT);
-
-        glDepthFunc(GL_EQUAL);
 
         glProgramUniformMatrix4fv(lightingShaderProgram, 0, 1, GL_FALSE, glm::value_ptr(projView));
         glProgramUniform3fv(lightingShaderProgram, 20, 1, glm::value_ptr(lightDir));
@@ -416,8 +427,6 @@ int main() {
         glBindSampler(0, shadowSampler);
 
         DrawMeshesColor(lightingShaderProgram, projView, meshes);
-
-        glDepthFunc(GL_LESS);
 
         glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
         glBlitFramebuffer(0, 0, viewportW, viewportH, 0, 0, viewportW, viewportH, GL_COLOR_BUFFER_BIT, GL_LINEAR);

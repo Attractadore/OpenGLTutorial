@@ -24,8 +24,8 @@ struct MeshData {
 };
 
 struct MeshGLRepr {
-    glm::mat4 model;
-    glm::mat3 normal;
+    glm::mat4 model{1.0f};
+    glm::mat3 normal{1.0f};
     GLuint VBO;
     GLuint EBO;
     GLuint VAO;

@@ -57,7 +57,7 @@ MeshData loadMesh(const std::string& path, std::size_t meshIndex) {
 }
 
 MeshGLRepr createMeshGLRepr(const std::string& scenePath, std::size_t meshIndex) {
-    MeshGLRepr repr = {.model{1.0F}, .normal{1.0F}};
+    MeshGLRepr repr;
     glCreateBuffers(1, &repr.VBO);
     glCreateBuffers(1, &repr.EBO);
     glCreateVertexArrays(1, &repr.VAO);

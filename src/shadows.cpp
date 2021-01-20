@@ -236,14 +236,6 @@ int main() {
         glDeleteShader(shadowGeomShader);
         glDeleteShader(zPrepassFragmentShader);
     }
-    GLuint reduceShaderProgram = 0;
-    {
-        GLuint minShader = createShaderSPIRV(GL_COMPUTE_SHADER, shaderBinPath + "/Reduce.comp.spv");
-        reduceShaderProgram = createProgram({minShader});
-        glDeleteShader(minShader);
-    }
-    glm::ivec3 workGroupSize;
-    glGetProgramiv(reduceShaderProgram, GL_COMPUTE_WORK_GROUP_SIZE, glm::value_ptr(workGroupSize));
 
     glm::vec3 lightDir = getLightDir({1.0f, 0.0f, -1.0f});
     glm::vec3 lightUp = getLightUp(lightDir);
@@ -278,20 +270,12 @@ int main() {
     glCreateRenderbuffers(1, &drawDepthRenderbuffer);
     glNamedRenderbufferStorage(drawDepthRenderbuffer, GL_DEPTH_COMPONENT32, viewportW, viewportH);
 
-    // Working with depth textures in compute shaders is not supported.
-    // Use separate texture array and write depth to it as color during a z only prepass.
     std::size_t queueSize = 3;
-    GLuint drawDepthTextureArray = 0;
-    glCreateTextures(GL_TEXTURE_2D_ARRAY, 1, &drawDepthTextureArray);
-    GLenum drawDepthInternalFormat = GL_RG16;
-    GLenum drawDepthFormat = GL_RG;
-    glTextureStorage3D(drawDepthTextureArray, 1, drawDepthInternalFormat, viewportW, viewportH, queueSize);
-
     std::vector<GLuint> readDepthBuffers(2 * queueSize);
     glCreateBuffers(readDepthBuffers.size(), readDepthBuffers.data());
     for (const auto& readDepthBuffer: readDepthBuffers) {
         // GL_CLIENT_STORAGE_BIT alone is not enough to get cpu side storage
-        glNamedBufferStorage(readDepthBuffer, sizeof(GLuint[2]), nullptr, GL_CLIENT_STORAGE_BIT | GL_MAP_READ_BIT);
+        glNamedBufferStorage(readDepthBuffer, sizeof(GLuint[2]), nullptr, GL_CLIENT_STORAGE_BIT | GL_MAP_READ_BIT | GL_DYNAMIC_STORAGE_BIT);
     }
 
     std::size_t drawI = 0;
@@ -321,12 +305,10 @@ int main() {
 
         glMemoryBarrier(GL_BUFFER_UPDATE_BARRIER_BIT);
         glm::uvec2 frame_depths;
-        glGetNamedBufferSubData(readDepthBuffers[drawI], 0, sizeof(frame_depths), glm::value_ptr(frame_depths));
+        glGetNamedBufferSubData(readDepthBuffers[drawI], 0, sizeof(GLuint[2]), glm::value_ptr(frame_depths));
         {
-            constexpr GLuint clear_min_depth = -1U;
-            constexpr GLuint clear_max_depth = 0;
-            glClearNamedBufferSubData(readDepthBuffers[drawI], drawDepthInternalFormat, 0, sizeof(GLuint), drawDepthFormat, GL_UNSIGNED_INT, &clear_min_depth);
-            glClearNamedBufferSubData(readDepthBuffers[drawI], drawDepthInternalFormat, sizeof(GLuint), sizeof(GLuint), drawDepthFormat, GL_UNSIGNED_INT, &clear_max_depth);
+            constexpr std::array<GLuint, 2> clear_depths = {-1U, 0};
+            glNamedBufferSubData(readDepthBuffers[drawI], 0, sizeof(GLuint[2]), clear_depths.data());
         }
 
         glm::mat4 projView = CameraManager::getProjectionMatrix() * CameraManager::getViewMatrix();
@@ -334,31 +316,15 @@ int main() {
         // Do z prepass
 
         glBindFramebuffer(GL_FRAMEBUFFER, drawFramebuffer);
-        glNamedFramebufferTextureLayer(drawFramebuffer, GL_COLOR_ATTACHMENT1, drawDepthTextureArray, 0, drawI);
-        glDrawBuffer(GL_COLOR_ATTACHMENT1);
-        glReadBuffer(GL_COLOR_ATTACHMENT1);
 
+        glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
         glDepthFunc(GL_LESS);
         glDepthMask(GL_TRUE);
 
-        glClearColor(1.0f, 0.0f, 1.0f, 1.0f);
-        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        glClear(GL_DEPTH_BUFFER_BIT);
 
-        DrawMeshesDepthOnly(zPrepassShaderProgram, projView, meshes);
-
-        glNamedFramebufferTextureLayer(drawFramebuffer, GL_COLOR_ATTACHMENT1, 0, 0, 0);
-
-        // Dispatch compute for min depth
-
-        glUseProgram(reduceShaderProgram);
-        glProgramUniform2ui(reduceShaderProgram, 0, viewportW, viewportH);
-        glBindImageTexture(0, drawDepthTextureArray, 0, GL_FALSE, drawI, GL_READ_ONLY, drawDepthInternalFormat);
         glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, readDepthBuffers[drawI]);
-        {
-            const std::size_t workGroupsX = CeilDiv(viewportW, workGroupSize.x);
-            const std::size_t workGroupsY = CeilDiv(viewportH, workGroupSize.y);
-            glDispatchCompute(workGroupsX, workGroupsY, 1);
-        }
+        DrawMeshesDepthOnly(zPrepassShaderProgram, projView, meshes);
         glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, 0);
 
         // Generate shadows
@@ -373,7 +339,7 @@ int main() {
         //
         // PCF
 
-        const glm::vec2 f_frame_depths = glm::vec2(frame_depths) / float((1 << 16) - 1);
+        const glm::vec2 f_frame_depths = glm::vec2(frame_depths) / float(-1U);
         const float f_min_depth = f_frame_depths[0];
         const float f_max_depth = f_frame_depths[1];
         const float cameraBias = queueSize * cameraSpeed / 30.0f;
@@ -381,7 +347,6 @@ int main() {
                                                    CameraManager::getNearPlane());
         const float cascades_far_plane = std::min(DepthToDistace(f_max_depth, CameraManager::getNearPlane(), CameraManager::getFarPlane()) + cameraBias,
                                                   CameraManager::getFarPlane());
-        //std::cout << cascades_near_plane << ' ' << cascades_far_plane << '\n';
 
         auto cascadeProperties = GetCascadeProperties(cascades_near_plane, cascades_far_plane, shadowMapNumCascades, shadowMapRes,
                                                       CameraManager::getViewMatrix(),
@@ -409,6 +374,7 @@ int main() {
         glDrawBuffer(GL_COLOR_ATTACHMENT0);
         glReadBuffer(GL_COLOR_ATTACHMENT0);
 
+        glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
         glDepthFunc(GL_EQUAL);
         glDepthMask(GL_FALSE);
 
@@ -442,7 +408,6 @@ int main() {
     glDeleteBuffers(readDepthBuffers.size(), readDepthBuffers.data());
     glDeleteSamplers(1, &shadowSampler);
     glDeleteTextures(1, &shadowMapArray);
-    glDeleteTextures(1, &drawDepthTextureArray);
     glDeleteRenderbuffers(1, &drawColorRenderbuffer);
     glDeleteRenderbuffers(1, &drawDepthRenderbuffer);
     glDeleteFramebuffers(1, &shadowFramebuffer);
@@ -450,6 +415,5 @@ int main() {
     glDeleteProgram(lightingShaderProgram);
     glDeleteProgram(shadowShaderProgram);
     glDeleteProgram(zPrepassShaderProgram);
-    glDeleteProgram(reduceShaderProgram);
     CameraManager::terminate();
 }

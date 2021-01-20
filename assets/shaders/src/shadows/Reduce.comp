@@ -3,7 +3,7 @@
 
 layout(local_size_x = 16, local_size_y = 16) in;
 
-layout(binding = 0, r8) restrict readonly uniform image2D inData;
+layout(binding = 0, r16) restrict readonly uniform image2D inData;
 
 layout(binding = 0) coherent restrict buffer OutData {
     uint minDepth;
@@ -19,6 +19,6 @@ void main() {
     work = subgroupMin(work);
 
     if (subgroupElect()) {
-        atomicMin(outData.minDepth, uint(255 * work));
+        atomicMin(outData.minDepth, uint(((1 << 16) - 1) * work));
     }
 }

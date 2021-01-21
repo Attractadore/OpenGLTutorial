@@ -32,90 +32,12 @@ glm::vec3 projToWorld(glm::mat4 const& projViewInv, glm::vec3 const& frustP) {
     return worldP / worldP.w;
 }
 
-float getFrustrumDiag(glm::mat4 const& projViewInv) {
-    glm::vec3 v0 = projToWorld(projViewInv, {-1.0f, -1.0f, 1.0f});
-    glm::vec3 v1 = projToWorld(projViewInv, {1.0f, 1.0f, -1.0f});
-    glm::vec3 v2 = projToWorld(projViewInv, {1.0f, 1.0f, 1.0f});
-
-    float r1 = glm::length(v1 - v0);
-    float r2 = glm::length(v2 - v0);
-
-    return glm::max(r1, r2);
-}
-
-float discretize(float v, float step) {
-    return glm::floor(v / step) * step;
-}
-
-glm::mat4 getLightProj(glm::mat4 const& lightView, glm::mat4 const& cameraProjViewInv, float boxSize, float shadowSampleSize) {
-    glm::vec3 maxBox{std::numeric_limits<float>::lowest()};
-    glm::vec3 minBox{std::numeric_limits<float>::max()};
-    for (float x: {-1.0f, 1.0f}) {
-        for (float y: {-1.0f, 1.0f}) {
-            for (float z: {-1.0f, 1.0f}) {
-                glm::vec3 frustP{x, y, z};
-                glm::vec3 worldP = projToWorld(cameraProjViewInv, frustP);
-                glm::vec3 viewP = lightView * glm::vec4{worldP, 1.0f};
-                viewP.z *= -1.0f;
-                maxBox = glm::max(maxBox, viewP);
-                minBox = glm::min(minBox, viewP);
-            }
-        }
-    }
-
-    minBox.x = discretize(minBox.x, shadowSampleSize);
-    minBox.y = discretize(minBox.y, shadowSampleSize);
-    maxBox.x = minBox.x + boxSize;
-    maxBox.y = minBox.y + boxSize;
-
-    glm::mat4 lightProj = glm::ortho(minBox.x, maxBox.x, minBox.y, maxBox.y, minBox.z, maxBox.z);
-
-    return lightProj;
-}
-
-std::vector<float> Partition(const float nearPlane, const float farPlane, const std::size_t numCascades) {
-    std::vector<float> cascadeBounds(numCascades + 1);
-    const float cascadeScale = std::pow(farPlane / nearPlane, 1.0f / numCascades);
-    float cascadeNearPlane = nearPlane;
-    for (std::uint8_t i = 0; i < numCascades; i++) {
-        cascadeBounds[i] = cascadeNearPlane;
-        cascadeNearPlane *= cascadeScale;
-    }
-    cascadeBounds[numCascades] = farPlane;
-    return cascadeBounds;
-}
-
-float DistanceToDepth(float distance, float nearPlane, float farPlane) {
-    return (distance - nearPlane) / (farPlane - nearPlane) * farPlane / distance;
-}
-
-float DepthToDistace(float depth, float near_plane, float far_plane) {
-    return 1.0F / glm::mix(1.0F / near_plane, 1.0F / far_plane, depth);
-}
-
-struct CascadeProperties {
-    std::vector<glm::mat4> transforms;
-    glm::vec4 sampleSizes, depths;
-};
-
-CascadeProperties GetCascadeProperties(float cascades_near_plane, float cascades_far_plane, std::uint8_t numCascades, std::uint16_t shadowRes, glm::mat4 const& m4View, float camera_near_plane, float camera_far_plane, float verticalFOV, float aspectRatio, glm::mat4 const& lightView) {
-    CascadeProperties properties;
-    const auto cascadeBounds = Partition(cascades_near_plane, cascades_far_plane, numCascades);
-    for (std::size_t i = 0; i < numCascades; i++) {
-        const float n = cascadeBounds[i];
-        const float f = cascadeBounds[i + 1];
-        const glm::mat4 cascadeProj = glm::perspective(glm::radians(verticalFOV), aspectRatio, n, f);
-        const glm::mat4 cascadeProjViewInv = glm::inverse(cascadeProj * m4View);
-        // Cascade bounding box must be larger than the frustrum
-        float boundingBoxSize = getFrustrumDiag(cascadeProjViewInv) * (shadowRes + 1) / shadowRes;
-        float sampleSize = boundingBoxSize / shadowRes;
-        const glm::mat4 lightProj = getLightProj(lightView, cascadeProjViewInv, boundingBoxSize, sampleSize);
-        properties.transforms.push_back(lightProj * lightView);
-        properties.sampleSizes[i] = sampleSize;
-        const float nDepth = DistanceToDepth(n, camera_near_plane, camera_far_plane);
-        properties.depths[i] = nDepth;
-    }
-    return properties;
+glm::vec3 GetEdgeDirVec(glm::mat4 const& proj_view_inv) {
+    glm::vec3 v0 = projToWorld(proj_view_inv, {1.0f, 1.0f, -1.0f});
+    glm::vec3 v1 = projToWorld(proj_view_inv, {1.0f, 1.0f, 1.0f});
+    glm::vec3 edge_dir_vec = v1 - v0;
+    edge_dir_vec /= (CameraManager::getFarPlane() - CameraManager::getNearPlane());
+    return edge_dir_vec;
 }
 
 template <glm::length_t C, glm::length_t R, typename T, glm::qualifier Q>
@@ -236,6 +158,12 @@ int main() {
         glDeleteShader(shadowGeomShader);
         glDeleteShader(zPrepassFragmentShader);
     }
+    GLuint z_partition_shader_program = [&shaderBinPath](){ 
+        GLuint z_partition_compute_shader = createShaderSPIRV(GL_COMPUTE_SHADER, shaderBinPath + "/ZPartition.comp.spv");
+        GLuint z_partition_shader_program = createProgram({z_partition_compute_shader});
+        glDeleteShader(z_partition_compute_shader);
+        return z_partition_shader_program;
+    }();
 
     glm::vec3 lightDir = getLightDir({1.0f, 0.0f, -1.0f});
     glm::vec3 lightUp = getLightUp(lightDir);
@@ -251,11 +179,10 @@ int main() {
     glSamplerParameteri(shadowSampler, GL_TEXTURE_COMPARE_MODE, GL_COMPARE_REF_TO_TEXTURE);
     glSamplerParameteri(shadowSampler, GL_TEXTURE_COMPARE_FUNC, GL_LEQUAL);
 
-    uint16_t shadowMapRes = 1024;
-    uint8_t shadowMapNumCascades = 4;
+    unsigned shadowMapRes = 1024;
     GLuint shadowMapArray;
     glCreateTextures(GL_TEXTURE_2D_ARRAY, 1, &shadowMapArray);
-    glTextureStorage3D(shadowMapArray, 1, GL_DEPTH_COMPONENT32, shadowMapRes, shadowMapRes, shadowMapNumCascades);
+    glTextureStorage3D(shadowMapArray, 1, GL_DEPTH_COMPONENT32, shadowMapRes, shadowMapRes, 4);
 
     GLuint shadowFramebuffer = 0;
     glCreateFramebuffers(1, &shadowFramebuffer);
@@ -270,20 +197,25 @@ int main() {
     glCreateRenderbuffers(1, &drawDepthRenderbuffer);
     glNamedRenderbufferStorage(drawDepthRenderbuffer, GL_DEPTH_COMPONENT32, viewportW, viewportH);
 
-    std::size_t queueSize = 3;
-    std::vector<GLuint> readDepthBuffers(2 * queueSize);
-    glCreateBuffers(readDepthBuffers.size(), readDepthBuffers.data());
-    for (const auto& readDepthBuffer: readDepthBuffers) {
-        // GL_CLIENT_STORAGE_BIT alone is not enough to get cpu side storage
-        glNamedBufferStorage(readDepthBuffer, sizeof(GLuint[2]), nullptr, GL_CLIENT_STORAGE_BIT | GL_MAP_READ_BIT | GL_DYNAMIC_STORAGE_BIT);
-    }
-
-    std::size_t drawI = 0;
-
     GLuint drawFramebuffer;
     glCreateFramebuffers(1, &drawFramebuffer);
     glNamedFramebufferRenderbuffer(drawFramebuffer, GL_COLOR_ATTACHMENT0, GL_RENDERBUFFER, drawColorRenderbuffer);
     glNamedFramebufferRenderbuffer(drawFramebuffer, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, drawDepthRenderbuffer);
+
+    GLuint depthComputeBuffer = 0;
+    glCreateBuffers(1, &depthComputeBuffer);
+    glNamedBufferStorage(depthComputeBuffer, sizeof(GLuint[2]), nullptr, GL_DYNAMIC_STORAGE_BIT);
+    GLuint zPartitionBuffer = 0;
+    glCreateBuffers(1, &zPartitionBuffer);
+    glNamedBufferStorage(zPartitionBuffer, sizeof(glm::mat4[4]) + sizeof(glm::vec4[2]), nullptr, 0);
+
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, depthComputeBuffer);
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, zPartitionBuffer);
+
+    glProgramUniform1ui(z_partition_shader_program, 0, shadowMapRes);
+    glProgramUniform1f(z_partition_shader_program, 3, CameraManager::getNearPlane());
+    glProgramUniform1f(z_partition_shader_program, 4, CameraManager::getFarPlane());
+    glProgramUniformMatrix4fv(z_partition_shader_program, 10, 1, GL_FALSE, glm::value_ptr(lightView));
 
     double currentTime = 0;
     double previousTime = 0;
@@ -301,17 +233,12 @@ int main() {
             camera->cameraPos += float(deltaTime * cameraSpeed) * cameraMovementInput;
         }
 
-        // Get min and max depth
-
-        glMemoryBarrier(GL_BUFFER_UPDATE_BARRIER_BIT);
-        glm::uvec2 frame_depths;
-        glGetNamedBufferSubData(readDepthBuffers[drawI], 0, sizeof(GLuint[2]), glm::value_ptr(frame_depths));
         {
             constexpr std::array<GLuint, 2> clear_depths = {-1U, 0};
-            glNamedBufferSubData(readDepthBuffers[drawI], 0, sizeof(GLuint[2]), clear_depths.data());
+            glNamedBufferSubData(depthComputeBuffer, 0, sizeof(GLuint[2]), clear_depths.data());
         }
 
-        glm::mat4 projView = CameraManager::getProjectionMatrix() * CameraManager::getViewMatrix();
+        const glm::mat4 projView = CameraManager::getProjectionMatrix() * CameraManager::getViewMatrix();
 
         // Do z prepass
 
@@ -323,9 +250,13 @@ int main() {
 
         glClear(GL_DEPTH_BUFFER_BIT);
 
-        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, readDepthBuffers[drawI]);
         DrawMeshesDepthOnly(zPrepassShaderProgram, projView, meshes);
-        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, 0);
+
+        glUseProgram(z_partition_shader_program);
+        glUniform3fv(1, 1, glm::value_ptr(camera->cameraPos));
+        glUniform3fv(2, 1, glm::value_ptr(GetEdgeDirVec(glm::inverse(projView))));
+        glDispatchCompute(1, 1, 1);
+        glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
 
         // Generate shadows
 
@@ -339,27 +270,10 @@ int main() {
         //
         // PCF
 
-        const glm::vec2 f_frame_depths = glm::vec2(frame_depths) / float(-1U);
-        const float f_min_depth = f_frame_depths[0];
-        const float f_max_depth = f_frame_depths[1];
-        const float cameraBias = queueSize * cameraSpeed / 30.0f;
-        const float cascades_near_plane = std::max(DepthToDistace(f_min_depth, CameraManager::getNearPlane(), CameraManager::getFarPlane()) - cameraBias,
-                                                   CameraManager::getNearPlane());
-        const float cascades_far_plane = std::min(DepthToDistace(f_max_depth, CameraManager::getNearPlane(), CameraManager::getFarPlane()) + cameraBias,
-                                                  CameraManager::getFarPlane());
-
-        auto cascadeProperties = GetCascadeProperties(cascades_near_plane, cascades_far_plane, shadowMapNumCascades, shadowMapRes,
-                                                      CameraManager::getViewMatrix(),
-                                                      CameraManager::getNearPlane(), CameraManager::getFarPlane(),
-                                                      CameraManager::getVerticalFOV(), CameraManager::getAspectRatio(), lightView);
-
         glBindFramebuffer(GL_FRAMEBUFFER, shadowFramebuffer);
         glViewport(0, 0, shadowMapRes, shadowMapRes);
         glEnable(GL_DEPTH_CLAMP);
         glClear(GL_DEPTH_BUFFER_BIT);
-
-        glProgramUniform1i(shadowShaderProgram, 10, shadowMapNumCascades);
-        glProgramUniformMatrix4fv(shadowShaderProgram, 11, shadowMapNumCascades, GL_FALSE, DataPtr(cascadeProperties.transforms));
 
         DrawMeshShadows(shadowShaderProgram, meshes);
 
@@ -381,12 +295,7 @@ int main() {
         glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT);
 
-        glProgramUniformMatrix4fv(lightingShaderProgram, 0, 1, GL_FALSE, glm::value_ptr(projView));
         glProgramUniform3fv(lightingShaderProgram, 20, 1, glm::value_ptr(lightDir));
-        glProgramUniform1i(lightingShaderProgram, 21, shadowMapNumCascades);
-        glProgramUniformMatrix4fv(lightingShaderProgram, 22, shadowMapNumCascades, GL_FALSE, DataPtr(cascadeProperties.transforms));
-        glProgramUniform4fv(lightingShaderProgram, 30, 1, glm::value_ptr(cascadeProperties.depths));
-        glProgramUniform4fv(lightingShaderProgram, 31, 1, glm::value_ptr(cascadeProperties.sampleSizes));
         glProgramUniform3fv(lightingShaderProgram, 40, 1, glm::value_ptr(camera->cameraPos));
 
         glBindTextureUnit(0, shadowMapArray);
@@ -397,15 +306,14 @@ int main() {
         glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
         glBlitFramebuffer(0, 0, viewportW, viewportH, 0, 0, viewportW, viewportH, GL_COLOR_BUFFER_BIT, GL_LINEAR);
 
-        drawI = (drawI + 1) % queueSize;
-
         glfwSwapBuffers(window);
         glfwPollEvents();
     }
 
     deleteMeshGLRepr(bunnyMesh);
     deleteMeshGLRepr(groundMesh);
-    glDeleteBuffers(readDepthBuffers.size(), readDepthBuffers.data());
+    glDeleteBuffers(1, &depthComputeBuffer);
+    glDeleteBuffers(1, &zPartitionBuffer);
     glDeleteSamplers(1, &shadowSampler);
     glDeleteTextures(1, &shadowMapArray);
     glDeleteRenderbuffers(1, &drawColorRenderbuffer);
@@ -415,5 +323,6 @@ int main() {
     glDeleteProgram(lightingShaderProgram);
     glDeleteProgram(shadowShaderProgram);
     glDeleteProgram(zPrepassShaderProgram);
+    glDeleteProgram(z_partition_shader_program);
     CameraManager::terminate();
 }

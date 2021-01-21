@@ -6,20 +6,19 @@ layout(location = 0) in VERT_OUT {
 }
 fIn;
 
-const int MAX_CASCADES = 4;
-
 layout(location = 0) out vec4 fColor;
 
 layout(location = 20) uniform vec3 lightShine;
 
-layout(location = 21) uniform int numCascades;
-layout(location = 22) uniform mat4 cascadeTransforms[MAX_CASCADES];
-layout(location = 30) uniform vec4 cascadeDepths;
-layout(location = 31) uniform vec4 cascadeSampleSizes;
-
 layout(location = 40) uniform vec3 cameraPos;
 
 layout(binding = 0) uniform sampler2DArrayShadow lightShadowMapArray;
+
+layout(binding = 1) restrict readonly buffer CascadePropertiesBuffer {
+    mat4 cascadeTransforms[4];
+    vec4 cascadeDepths;
+    vec4 cascadeSampleSizes;
+};
 
 vec3 normalOffset(vec3 lightDir, float lightSampleSize, vec3 fragNormal) {
     float lightNormalCos = dot(lightDir, fragNormal);
@@ -60,11 +59,7 @@ void main() {
     vec3 cameraDir = normalize(cameraPos - fragPos);
     vec3 v3LightDir = normalize(-lightShine);
 
-    ivec4 iv4CascadeSelect = ivec4(
-        numCascades > 0,
-        numCascades > 1,
-        numCascades > 2,
-        numCascades > 3);
+    ivec4 iv4CascadeSelect = ivec4(1);
 
     ivec4 iv4Comp = ivec4(greaterThanEqual(vec4(fFragDepth), cascadeDepths));
     int iCascade = int(dot(iv4Comp, iv4CascadeSelect) - 1);

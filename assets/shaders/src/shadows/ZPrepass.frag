@@ -1,11 +1,10 @@
 #version 460
 #extension GL_KHR_shader_subgroup_arithmetic : require
 
-layout(binding = 0) coherent restrict buffer OutData {
+layout(binding = 0, std430) coherent restrict buffer DepthDataBuffer {
     uint minDepth;
     uint maxDepth;
-}
-outData;
+};
 
 void main() {
     vec2 work = vec2(gl_FragCoord.z);
@@ -14,7 +13,7 @@ void main() {
     work.y = subgroupMax(work.y);
 
     if (subgroupElect()) {
-        atomicMin(outData.minDepth, uint((-1u) * work.x));
-        atomicMax(outData.maxDepth, uint((-1u) * work.y));
+        atomicMin(minDepth, uint((-1U) * work.x));
+        atomicMax(maxDepth, uint((-1U) * work.y));
     }
 }

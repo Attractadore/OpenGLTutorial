@@ -32,14 +32,6 @@ glm::vec3 projToWorld(glm::mat4 const& projViewInv, glm::vec3 const& frustP) {
     return worldP / worldP.w;
 }
 
-glm::vec3 GetEdgeDirVec(glm::mat4 const& proj_view_inv) {
-    glm::vec3 v0 = projToWorld(proj_view_inv, {1.0f, 1.0f, -1.0f});
-    glm::vec3 v1 = projToWorld(proj_view_inv, {1.0f, 1.0f, 1.0f});
-    glm::vec3 edge_dir_vec = v1 - v0;
-    edge_dir_vec /= (CameraManager::getFarPlane() - CameraManager::getNearPlane());
-    return edge_dir_vec;
-}
-
 template <glm::length_t C, glm::length_t R, typename T, glm::qualifier Q>
 T const* DataPtr(std::vector<glm::mat<C, R, T, Q>> const& data) {
     return reinterpret_cast<T const*>(data.data());
@@ -209,9 +201,6 @@ int main() {
     glCreateBuffers(1, &zPartitionBuffer);
     glNamedBufferStorage(zPartitionBuffer, sizeof(glm::mat4[4]) + sizeof(glm::vec4[2]), nullptr, 0);
 
-    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, depthComputeBuffer);
-    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, zPartitionBuffer);
-
     glProgramUniform1ui(z_partition_shader_program, 0, shadowMapRes);
     glProgramUniform1f(z_partition_shader_program, 3, CameraManager::getNearPlane());
     glProgramUniform1f(z_partition_shader_program, 4, CameraManager::getFarPlane());
@@ -250,13 +239,17 @@ int main() {
 
         glClear(GL_DEPTH_BUFFER_BIT);
 
+        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, depthComputeBuffer);
         DrawMeshesDepthOnly(zPrepassShaderProgram, projView, meshes);
 
         glUseProgram(z_partition_shader_program);
-        glUniform3fv(1, 1, glm::value_ptr(camera->cameraPos));
-        glUniform3fv(2, 1, glm::value_ptr(GetEdgeDirVec(glm::inverse(projView))));
+        glUniformMatrix4fv(5, 1, GL_FALSE, glm::value_ptr(glm::inverse(projView)));
+
+        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, zPartitionBuffer);
+        glMemoryBarrier(GL_ALL_BARRIER_BITS);
         glDispatchCompute(1, 1, 1);
-        glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, 0);
+        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, 0);
 
         // Generate shadows
 
@@ -275,7 +268,10 @@ int main() {
         glEnable(GL_DEPTH_CLAMP);
         glClear(GL_DEPTH_BUFFER_BIT);
 
+        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, zPartitionBuffer);
+        glMemoryBarrier(GL_ALL_BARRIER_BITS);
         DrawMeshShadows(shadowShaderProgram, meshes);
+        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, 0);
 
         glDisable(GL_DEPTH_CLAMP);
         glViewport(0, 0, viewportW, viewportH);
@@ -301,7 +297,10 @@ int main() {
         glBindTextureUnit(0, shadowMapArray);
         glBindSampler(0, shadowSampler);
 
+        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, zPartitionBuffer);
+        glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
         DrawMeshesColor(lightingShaderProgram, projView, meshes);
+        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, 0);
 
         glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
         glBlitFramebuffer(0, 0, viewportW, viewportH, 0, 0, viewportW, viewportH, GL_COLOR_BUFFER_BIT, GL_LINEAR);

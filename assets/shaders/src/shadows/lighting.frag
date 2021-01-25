@@ -14,7 +14,7 @@ layout(location = 40) uniform vec3 cameraPos;
 
 layout(binding = 0) uniform sampler2DArrayShadow lightShadowMapArray;
 
-layout(binding = 1) restrict readonly buffer CascadePropertiesBuffer {
+layout(binding = 1, std430) restrict readonly buffer CascadePropertiesBuffer {
     mat4 cascadeTransforms[4];
     vec4 cascadeDepths;
     vec4 cascadeSampleSizes;
@@ -33,12 +33,12 @@ vec3 fragLSTransform(mat4 lightTrans, vec3 fragPos) {
     return 0.5f * (lsPos.xyz + 1.0f);
 }
 
-float shadowing(vec3 v3LightDir, vec3 fragPos, vec3 fragNormal, sampler2DArrayShadow shadowMapArray, int cascadeIndex) {
+float shadowing(vec3 v3LightDir, vec3 fragPos, vec3 fragNormal, int cascadeIndex) {
     float fCascadeSampleSize = cascadeSampleSizes[cascadeIndex];
     vec3 fragOffsetPos = fragPos + normalOffset(v3LightDir, fCascadeSampleSize, fragNormal);
     mat4 m4CascadeTrans = cascadeTransforms[cascadeIndex];
     vec3 fragLSPos = fragLSTransform(m4CascadeTrans, fragOffsetPos);
-    return texture(shadowMapArray, vec4(fragLSPos.xy, cascadeIndex, fragLSPos.z));
+    return texture(lightShadowMapArray, vec4(fragLSPos.xy, cascadeIndex, fragLSPos.z));
 }
 
 vec3 lighting(vec3 v3LightDir, vec3 cameraDir, vec3 fragNormal, float shadow) {
@@ -65,7 +65,7 @@ void main() {
     int iCascade = int(dot(iv4Comp, iv4CascadeSelect) - 1);
 
 #if 1
-    float fShadow = shadowing(v3LightDir, fragPos, fragNormal, lightShadowMapArray, iCascade);
+    float fShadow = shadowing(v3LightDir, fragPos, fragNormal, iCascade);
 
     vec3 color = lighting(v3LightDir, cameraDir, fragNormal, fShadow);
 #else

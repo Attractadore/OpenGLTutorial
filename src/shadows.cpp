@@ -55,7 +55,7 @@ void ImpDrawMeshes(GLuint program, glm::mat4 const& projView, std::vector<MeshGL
 
     glUseProgram(program);
 
-    auto it = meshes.begin();
+    auto it = meshes.cbegin();
     glEnable(GL_CULL_FACE);
     for (; it < unculledMeshesBegin; ++it) {
         ImpDrawMesh<drawType>(program, projView, *it);

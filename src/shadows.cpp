@@ -51,24 +51,17 @@ void ImpDrawMesh(GLuint program, glm::mat4 const& projView, MeshGLRepr const* me
 
 template <ImpDrawTypes drawType>
 void ImpDrawMeshes(GLuint program, glm::mat4 const& projView, std::vector<MeshGLRepr*>& meshes) {
-    auto meshesEnd = [&meshes]() {
-        if constexpr (drawType == ImpDrawTypes::Shadows) {
-            return std::partition(meshes.begin(), meshes.end(), [](MeshGLRepr const* mesh) { return mesh->bCastsShadows; });
-        }
-        return meshes.end();
-    }();
-
-    auto unculledMeshesBegin = std::partition(meshes.begin(), meshesEnd, [](MeshGLRepr const* mesh) { return mesh->bCullFaces; });
+    auto unculledMeshesBegin = std::partition(meshes.begin(), meshes.end(), [](MeshGLRepr const* mesh) { return mesh->bCullFaces; });
 
     glUseProgram(program);
 
+    auto it = meshes.begin();
     glEnable(GL_CULL_FACE);
-    for (auto it = meshes.begin(); it < unculledMeshesBegin; ++it) {
+    for (; it < unculledMeshesBegin; ++it) {
         ImpDrawMesh<drawType>(program, projView, *it);
     }
-
     glDisable(GL_CULL_FACE);
-    for (auto it = unculledMeshesBegin; it < meshesEnd; ++it) {
+    for (; it < meshes.cend(); ++it) {
         ImpDrawMesh<drawType>(program, projView, *it);
     }
 }
@@ -111,10 +104,12 @@ int main() {
 
     MeshGLRepr bunnyMesh = createMeshGLRepr(meshesPath + "/bunny.obj");
     bunnyMesh.bCullFaces = true;
-    bunnyMesh.bCastsShadows = true;
+    MeshGLRepr bunny_shadow_mesh = createMeshGLRepr(meshesPath + "/bunny_shadow.obj");
+    bunny_shadow_mesh.bCullFaces = true;
     MeshGLRepr groundMesh = createMeshGLRepr(meshesPath + "/../circularplane.obj");
     groundMesh.model = glm::scale(glm::mat4{1.0f}, glm::vec3{0.1f});
     std::vector<MeshGLRepr*> meshes = {&bunnyMesh, &groundMesh};
+    std::vector<MeshGLRepr*> shadow_meshes = {&bunny_shadow_mesh};
 
     GLuint lightingShaderProgram;
     {
@@ -237,7 +232,7 @@ int main() {
         glClear(GL_DEPTH_BUFFER_BIT);
 
         glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
-        DrawMeshShadows(shadowShaderProgram, meshes);
+        DrawMeshShadows(shadowShaderProgram, shadow_meshes);
 
         glDisable(GL_DEPTH_CLAMP);
         glViewport(0, 0, viewportW, viewportH);
@@ -265,6 +260,7 @@ int main() {
 
     deleteMeshGLRepr(bunnyMesh);
     deleteMeshGLRepr(groundMesh);
+    deleteMeshGLRepr(bunny_shadow_mesh);
     glDeleteBuffers(1, &depthComputeBuffer);
     glDeleteBuffers(1, &zPartitionBuffer);
     glDeleteSamplers(1, &shadowSampler);

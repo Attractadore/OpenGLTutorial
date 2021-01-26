@@ -31,7 +31,6 @@ struct MeshGLRepr {
     GLuint VAO;
     GLuint numIndices;
     bool bCullFaces : 1;
-    bool bCastsShadows : 1;
 };
 
 MeshData loadMesh(const std::string& path, std::size_t meshIndex = 0);

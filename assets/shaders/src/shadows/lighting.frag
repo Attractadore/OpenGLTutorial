@@ -1,4 +1,4 @@
-#version 460 core
+#version 460
 
 layout(location = 0) in VERT_OUT {
     vec3 pos;
@@ -64,19 +64,8 @@ void main() {
     ivec4 iv4Comp = ivec4(greaterThanEqual(vec4(fFragDepth), cascadeDepths));
     int iCascade = int(dot(iv4Comp, iv4CascadeSelect) - 1);
 
-#if 1
     float fShadow = shadowing(v3LightDir, fragPos, fragNormal, iCascade);
-
     vec3 color = lighting(v3LightDir, cameraDir, fragNormal, fShadow);
-#else
-    vec3 colors[4] = {
-        vec3(1.0F, 0.0F, 0.0F),
-        vec3(1.0f, 1.0f, 0.0f),
-        vec3(0.0f, 1.0f, 0.0f),
-        vec3(0.0f, 0.0f, 1.0f),
-    };
-    vec3 color = colors[iCascade];
-#endif
 
     fColor = vec4(color, 1.0f);
 }

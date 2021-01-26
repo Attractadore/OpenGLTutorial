@@ -2,9 +2,9 @@
 
 layout(local_size_x = 4) in;
 
-layout(binding = 0, std430) restrict readonly buffer CascadePlanesBuffer {
-    uint minPlane;
-    uint maxPlane;
+layout(binding = 0, std430) restrict buffer DepthBuffer {
+    uint minDepth;
+    uint maxDepth;
 };
 
 layout(binding = 1, std430) restrict writeonly buffer CascadePropertiesBuffer {
@@ -21,56 +21,57 @@ layout(location = 4) uniform float camera_far_plane;
 layout(location = 5) uniform mat4 proj_view_inv;
 layout(location = 10) uniform mat4 light_view;
 
-#define DEFINE_DISCRETIZE(type) \
-type discretize(type v, float step) { \
-    return floor(v / step) * step; \
-}
+#define DEFINE_DISCRETIZE(type)                       \
+    type discretize(const type v, const float step) { \
+        return floor(v / step) * step;                \
+    }
 
 DEFINE_DISCRETIZE(vec2)
 
-mat4 ortho(float left, float right, float bottom, float top, float near, float far) {
+mat4 ortho(const float left, const float right, const float bottom, const float top, const float near, const float far) {
     return mat4(
         2.0f / (right - left), 0.0f, 0.0f, 0.0f,
         0.0f, 2.0f / (top - bottom), 0.0f, 0.0f,
-        0.0f, 0.0f, 2.0f / (far - near), 0.0f,
-        (left + right) / (left - right), (bottom + top) / (bottom - top), (near + far) / (near - far), 1.0f
-    );
+        0.0f, 0.0f, 2.0f / (near - far), 0.0f,
+        (left + right) / (left - right), (bottom + top) / (bottom - top), (near + far) / (near - far), 1.0f);
 }
 
-float DistanceToDepth(float distance) {
+float DistanceToDepth(const float distance) {
     return (distance - camera_near_plane) / (camera_far_plane - camera_near_plane) * camera_far_plane / distance;
 }
 
-vec3 projToWorld(vec3 p) {
+float DepthToDistance(const float depth) {
+    return 1.0f / mix(1.0f / camera_near_plane, 1.0f / camera_far_plane, depth);
+}
+
+vec3 projToWorld(const vec3 p) {
     vec4 w = proj_view_inv * vec4(p, 1.0f);
     w /= w.w;
     return w.xyz;
 }
 
-float GetFrustrumDiag(float near_plane, float far_plane) {
-    float near_depth = 2.0f * DistanceToDepth(near_plane) - 1.0f;
-    float far_depth =  2.0f * DistanceToDepth(far_plane ) - 1.0f;
-    vec3 v0 = projToWorld(vec3( 1.0f,  1.0f, far_depth ));
-    vec3 v1 = projToWorld(vec3(-1.0f, -1.0f, far_depth ));
-    vec3 v2 = projToWorld(vec3(-1.0f, -1.0f, near_depth));
-
-    float d1 = length(v1 - v0);
-    float d2 = length(v2 - v0);
-
+float GetFrustrumDiag(const float near_plane, const float far_plane) {
+    const float near_depth = 2.0f * DistanceToDepth(near_plane) - 1.0f;
+    const float far_depth = 2.0f * DistanceToDepth(far_plane) - 1.0f;
+    const vec3 v0 = projToWorld(vec3(1.0f, 1.0f, far_depth));
+    const vec3 v1 = projToWorld(vec3(-1.0f, -1.0f, far_depth));
+    const vec3 v2 = projToWorld(vec3(-1.0f, -1.0f, near_depth));
+    const float d1 = length(v1 - v0);
+    const float d2 = length(v2 - v0);
     return max(d1, d2);
 }
 
-mat4 GetLightProj(float boxSize, float near_plane, float far_plane) {
+mat4 GetLightProj(const float boxSize, const float near_plane, const float far_plane) {
     vec3 minBox = vec3(1.0f / 0.0f);
     vec3 maxBox = vec3(-1.0f / 0.0f);
 
-    float z_scalars[2] = {near_plane, far_plane};
+    const float planes[2] = {near_plane, far_plane};
 
     for (int x = 0; x < 2; x++) {
         for (int y = 0; y < 2; y++) {
             for (int z = 0; z < 2; z++) {
-                float depths = 2.0f * DistanceToDepth(z_scalars[z]) - 1.0f;
-                vec3 worldP = projToWorld(vec3(2 * x - 1, 2 * y - 1, depths));
+                const float zNDC = 2.0f * DistanceToDepth(planes[z]) - 1.0f;
+                const vec3 worldP = projToWorld(vec3(2 * x - 1, 2 * y - 1, zNDC));
                 vec3 viewP = (light_view * vec4(worldP, 1.0f)).xyz;
                 viewP.z *= -1.0f;
                 maxBox = max(maxBox, viewP);
@@ -83,17 +84,15 @@ mat4 GetLightProj(float boxSize, float near_plane, float far_plane) {
     maxBox.xy = minBox.xy + vec2(boxSize);
 
     return ortho(minBox.x, maxBox.x, minBox.y, maxBox.y, minBox.z, maxBox.z);
-} 
+}
 
 void Partition() {
     const uint i = gl_LocalInvocationIndex;
-    float f_max_plane = maxPlane / float(-1U);
-    f_max_plane = camera_far_plane;
-    float f_min_plane = minPlane / float(-1U);
-    f_min_plane = camera_near_plane;
-    partition_planes[i] = pow(f_max_plane / f_min_plane, i * 0.25f) * f_min_plane;
+    const float min_plane = DepthToDistance(minDepth / float(-1U));
+    const float max_plane = DepthToDistance(maxDepth / float(-1U));
+    partition_planes[i] = pow(max_plane / min_plane, i * 0.25f) * min_plane;
     if (i == 0) {
-        partition_planes[4] = f_max_plane;
+        partition_planes[4] = max_plane;
     }
     memoryBarrierShared();
     barrier();
@@ -112,5 +111,9 @@ void main() {
     cascadeTransforms[i] = light_proj * light_view;
     cascadeDepths[i] = DistanceToDepth(n);
     cascadeSampleSizes[i] = boundingBoxSize / shadow_map_res;
-}
 
+    if (i == 0) {
+        minDepth = -1U;
+        maxDepth = 0;
+    }
+}

@@ -27,20 +27,6 @@ glm::mat4 getLightView(glm::vec3 const& lightDir, glm::vec3 const& lightUp) {
     return glm::lookAt(glm::vec3{0.0f}, lightDir, lightUp);
 }
 
-glm::vec3 projToWorld(glm::mat4 const& projViewInv, glm::vec3 const& frustP) {
-    glm::vec4 worldP = projViewInv * glm::vec4{frustP, 1.0f};
-    return worldP / worldP.w;
-}
-
-template <glm::length_t C, glm::length_t R, typename T, glm::qualifier Q>
-T const* DataPtr(std::vector<glm::mat<C, R, T, Q>> const& data) {
-    return reinterpret_cast<T const*>(data.data());
-}
-
-std::size_t CeilDiv(std::size_t x, std::size_t y) {
-    return x / y + (x % y != 0);
-}
-
 enum class ImpDrawTypes {
     DepthOnly,
     Shadows,
@@ -150,7 +136,7 @@ int main() {
         glDeleteShader(shadowGeomShader);
         glDeleteShader(zPrepassFragmentShader);
     }
-    GLuint z_partition_shader_program = [&shaderBinPath](){ 
+    GLuint z_partition_shader_program = [&shaderBinPath]() {
         GLuint z_partition_compute_shader = createShaderSPIRV(GL_COMPUTE_SHADER, shaderBinPath + "/ZPartition.comp.spv");
         GLuint z_partition_shader_program = createProgram({z_partition_compute_shader});
         glDeleteShader(z_partition_compute_shader);
@@ -182,29 +168,22 @@ int main() {
     glNamedFramebufferDrawBuffer(shadowFramebuffer, GL_NONE);
     glNamedFramebufferReadBuffer(shadowFramebuffer, GL_NONE);
 
-    GLuint drawColorRenderbuffer = 0;
-    glCreateRenderbuffers(1, &drawColorRenderbuffer);
-    glNamedRenderbufferStorage(drawColorRenderbuffer, GL_RGBA8, viewportW, viewportH);
-    GLuint drawDepthRenderbuffer = 0;
-    glCreateRenderbuffers(1, &drawDepthRenderbuffer);
-    glNamedRenderbufferStorage(drawDepthRenderbuffer, GL_DEPTH_COMPONENT32, viewportW, viewportH);
-
-    GLuint drawFramebuffer;
-    glCreateFramebuffers(1, &drawFramebuffer);
-    glNamedFramebufferRenderbuffer(drawFramebuffer, GL_COLOR_ATTACHMENT0, GL_RENDERBUFFER, drawColorRenderbuffer);
-    glNamedFramebufferRenderbuffer(drawFramebuffer, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, drawDepthRenderbuffer);
-
     GLuint depthComputeBuffer = 0;
     glCreateBuffers(1, &depthComputeBuffer);
-    glNamedBufferStorage(depthComputeBuffer, sizeof(GLuint[2]), nullptr, GL_DYNAMIC_STORAGE_BIT);
+    glNamedBufferStorage(depthComputeBuffer, sizeof(GLuint[2]), nullptr, 0);
     GLuint zPartitionBuffer = 0;
     glCreateBuffers(1, &zPartitionBuffer);
     glNamedBufferStorage(zPartitionBuffer, sizeof(glm::mat4[4]) + sizeof(glm::vec4[2]), nullptr, 0);
+
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, depthComputeBuffer);
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, zPartitionBuffer);
 
     glProgramUniform1ui(z_partition_shader_program, 0, shadowMapRes);
     glProgramUniform1f(z_partition_shader_program, 3, CameraManager::getNearPlane());
     glProgramUniform1f(z_partition_shader_program, 4, CameraManager::getFarPlane());
     glProgramUniformMatrix4fv(z_partition_shader_program, 10, 1, GL_FALSE, glm::value_ptr(lightView));
+
+    glProgramUniform3fv(lightingShaderProgram, 20, 1, glm::value_ptr(lightDir));
 
     double currentTime = 0;
     double previousTime = 0;
@@ -222,16 +201,9 @@ int main() {
             camera->cameraPos += float(deltaTime * cameraSpeed) * cameraMovementInput;
         }
 
-        {
-            constexpr std::array<GLuint, 2> clear_depths = {-1U, 0};
-            glNamedBufferSubData(depthComputeBuffer, 0, sizeof(GLuint[2]), clear_depths.data());
-        }
-
         const glm::mat4 projView = CameraManager::getProjectionMatrix() * CameraManager::getViewMatrix();
 
         // Do z prepass
-
-        glBindFramebuffer(GL_FRAMEBUFFER, drawFramebuffer);
 
         glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
         glDepthFunc(GL_LESS);
@@ -239,17 +211,13 @@ int main() {
 
         glClear(GL_DEPTH_BUFFER_BIT);
 
-        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, depthComputeBuffer);
         DrawMeshesDepthOnly(zPrepassShaderProgram, projView, meshes);
 
         glUseProgram(z_partition_shader_program);
         glUniformMatrix4fv(5, 1, GL_FALSE, glm::value_ptr(glm::inverse(projView)));
 
-        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, zPartitionBuffer);
-        glMemoryBarrier(GL_ALL_BARRIER_BITS);
+        glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
         glDispatchCompute(1, 1, 1);
-        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, 0);
-        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, 0);
 
         // Generate shadows
 
@@ -268,21 +236,14 @@ int main() {
         glEnable(GL_DEPTH_CLAMP);
         glClear(GL_DEPTH_BUFFER_BIT);
 
-        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, zPartitionBuffer);
-        glMemoryBarrier(GL_ALL_BARRIER_BITS);
+        glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
         DrawMeshShadows(shadowShaderProgram, meshes);
-        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, 0);
 
         glDisable(GL_DEPTH_CLAMP);
         glViewport(0, 0, viewportW, viewportH);
-
-        // Finish generating shadows
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
         // Main drawing pass
-
-        glBindFramebuffer(GL_FRAMEBUFFER, drawFramebuffer);
-        glDrawBuffer(GL_COLOR_ATTACHMENT0);
-        glReadBuffer(GL_COLOR_ATTACHMENT0);
 
         glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
         glDepthFunc(GL_EQUAL);
@@ -291,19 +252,12 @@ int main() {
         glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT);
 
-        glProgramUniform3fv(lightingShaderProgram, 20, 1, glm::value_ptr(lightDir));
         glProgramUniform3fv(lightingShaderProgram, 40, 1, glm::value_ptr(camera->cameraPos));
 
         glBindTextureUnit(0, shadowMapArray);
         glBindSampler(0, shadowSampler);
 
-        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, zPartitionBuffer);
-        glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
         DrawMeshesColor(lightingShaderProgram, projView, meshes);
-        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, 0);
-
-        glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
-        glBlitFramebuffer(0, 0, viewportW, viewportH, 0, 0, viewportW, viewportH, GL_COLOR_BUFFER_BIT, GL_LINEAR);
 
         glfwSwapBuffers(window);
         glfwPollEvents();
@@ -315,10 +269,7 @@ int main() {
     glDeleteBuffers(1, &zPartitionBuffer);
     glDeleteSamplers(1, &shadowSampler);
     glDeleteTextures(1, &shadowMapArray);
-    glDeleteRenderbuffers(1, &drawColorRenderbuffer);
-    glDeleteRenderbuffers(1, &drawDepthRenderbuffer);
     glDeleteFramebuffers(1, &shadowFramebuffer);
-    glDeleteFramebuffers(1, &drawFramebuffer);
     glDeleteProgram(lightingShaderProgram);
     glDeleteProgram(shadowShaderProgram);
     glDeleteProgram(zPrepassShaderProgram);

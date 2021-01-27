@@ -88,8 +88,8 @@ mat4 GetLightProj(const float boxSize, const float near_plane, const float far_p
 
 void Partition() {
     const uint i = gl_LocalInvocationIndex;
-    const float min_plane = DepthToDistance(minDepth / float(-1U)) - 0.01f;
-    const float max_plane = DepthToDistance(maxDepth / float(-1U));
+    const float min_plane = DepthToDistance(uintBitsToFloat(minDepth)) - 0.01f;
+    const float max_plane = DepthToDistance(uintBitsToFloat(maxDepth));
     partition_planes[i] = pow(max_plane / min_plane, i * 0.25f) * min_plane;
     if (i == 0) {
         partition_planes[4] = max_plane;
@@ -113,7 +113,7 @@ void main() {
     cascadeSampleSizes[i] = boundingBoxSize / shadow_map_res;
 
     if (i == 0) {
-        minDepth = -1U;
-        maxDepth = 0;
+        minDepth = floatBitsToUint(1.0f);
+        maxDepth = floatBitsToUint(0.0f);
     }
 }

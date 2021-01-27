@@ -7,13 +7,13 @@ layout(binding = 0, std430) coherent restrict buffer DepthDataBuffer {
 };
 
 void main() {
-    vec2 work = vec2(gl_FragCoord.z);
+    uvec2 work = uvec2(floatBitsToUint(gl_FragCoord.z));
 
     work.x = subgroupMin(work.x);
     work.y = subgroupMax(work.y);
 
     if (subgroupElect()) {
-        atomicMin(minDepth, uint((-1U) * work.x));
-        atomicMax(maxDepth, uint((-1U) * work.y));
+        atomicMin(minDepth, work.x);
+        atomicMax(maxDepth, work.y);
     }
 }

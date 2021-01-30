@@ -177,10 +177,17 @@ int main() {
     glBindTextureUnit(LIGHTING_FRAG_SHADOW_MAP_ARR_BINDING, shadowMapArray);
     glBindSampler(LIGHTING_FRAG_SHADOW_MAP_ARR_BINDING, shadowSampler);
 
+    bool b_shadow_cascade_depth_adjust = false;
+    bool b_shadow_texel_move = true;
+
+    glProgramUniform1i(zPrepassShaderProgram, B_SHADOW_CASCADE_DEPTH_ADJUST_LOCATION, b_shadow_cascade_depth_adjust);
+
     glProgramUniform1ui(z_partition_shader_program, Z_PARTITION_COMP_SHADOW_MAP_RES_LOCATION, shadowMapRes);
     glProgramUniform1f(z_partition_shader_program, Z_PARTITION_COMP_CAMERA_NEAR_PLANE_LOCATION, CameraManager::getNearPlane());
     glProgramUniform1f(z_partition_shader_program, Z_PARTITION_COMP_CAMERA_FAR_PLANE_LOCATION, CameraManager::getFarPlane());
     glProgramUniformMatrix4fv(z_partition_shader_program, Z_PARTITION_COMP_LIGHT_VIEW_LOCATION, 1, GL_FALSE, glm::value_ptr(lightView));
+    glProgramUniform1i(z_partition_shader_program, B_SHADOW_CASCADE_DEPTH_ADJUST_LOCATION, b_shadow_cascade_depth_adjust);
+    glProgramUniform1i(z_partition_shader_program, B_SHADOW_TEXEL_MOVE_LOCATION, b_shadow_texel_move);
 
     glProgramUniform3fv(lightingShaderProgram, LIGHTING_FRAG_LIGHT_SHINE_DIR_LOCATION, 1, glm::value_ptr(lightDir));
 

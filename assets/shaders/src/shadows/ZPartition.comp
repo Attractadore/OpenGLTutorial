@@ -4,6 +4,7 @@
 #include "depth_ssbo.glsl"
 #define CASCADE_SSBO_QUALIFIERS restrict writeonly
 #include "cascade_ssbo.glsl"
+#include "shadow_setting_uniforms.glsl"
 
 layout(local_size_x = 4) in;
 
@@ -27,12 +28,19 @@ shared float partition_planes[5];
 
 DEFINE_DISCRETIZE(vec2)
 
-mat4 ortho(const float left, const float right, const float bottom, const float top, const float near, const float far) {
+struct BoundingBox {
+    vec3 min_corner;
+    vec3 max_corner;
+};
+
+mat4 ortho(BoundingBox bounding_box) {
+    const vec3 neg_diff_inv = 1.0f / (bounding_box.min_corner - bounding_box.max_corner);
+    const vec3 sum = bounding_box.min_corner + bounding_box.max_corner;
     return mat4(
-        2.0f / (right - left), 0.0f, 0.0f, 0.0f,
-        0.0f, 2.0f / (top - bottom), 0.0f, 0.0f,
-        0.0f, 0.0f, 2.0f / (near - far), 0.0f,
-        (left + right) / (left - right), (bottom + top) / (bottom - top), (near + far) / (near - far), 1.0f);
+        -2.0f * neg_diff_inv.x, 0.0f, 0.0f, 0.0f,
+        0.0f, -2.0f * neg_diff_inv.y, 0.0f, 0.0f,
+        0.0f, 0.0f, 2.0f * neg_diff_inv.z, 0.0f,
+        sum * neg_diff_inv, 1.0f);
 }
 
 float DistanceToDepth(const float distance) {
@@ -60,9 +68,8 @@ float GetFrustrumDiag(const float near_plane, const float far_plane) {
     return max(d1, d2);
 }
 
-mat4 GetLightProj(const float boxSize, const float near_plane, const float far_plane) {
-    vec3 minBox = vec3(1.0f / 0.0f);
-    vec3 maxBox = vec3(-1.0f / 0.0f);
+BoundingBox getBoundingBox(const float near_plane, const float far_plane) {
+    BoundingBox box = BoundingBox(vec3(1.0f / 0.0f), vec3(-1.0f / 0.0f));
 
     const float planes[2] = {near_plane, far_plane};
 
@@ -73,22 +80,19 @@ mat4 GetLightProj(const float boxSize, const float near_plane, const float far_p
                 const vec3 worldP = projToWorld(vec3(2 * x - 1, 2 * y - 1, zNDC));
                 vec3 viewP = (light_view * vec4(worldP, 1.0f)).xyz;
                 viewP.z *= -1.0f;
-                maxBox = max(maxBox, viewP);
-                minBox = min(minBox, viewP);
+                box.min_corner = min(box.min_corner, viewP);
+                box.max_corner = max(box.max_corner, viewP);
             }
         }
     }
 
-    minBox.xy = discretize(minBox.xy, boxSize / shadow_map_res);
-    maxBox.xy = minBox.xy + vec2(boxSize);
-
-    return ortho(minBox.x, maxBox.x, minBox.y, maxBox.y, minBox.z, maxBox.z);
+    return box;
 }
 
 void Partition() {
     const uint i = gl_LocalInvocationIndex;
-    const float min_plane = DepthToDistance(uintBitsToFloat(minDepth)) - 0.01f;
-    const float max_plane = DepthToDistance(uintBitsToFloat(maxDepth));
+    const float min_plane = (b_shadow_cascade_depth_adjust) ? DepthToDistance(uintBitsToFloat(minDepth)) - 0.01f : camera_near_plane;
+    const float max_plane = (b_shadow_cascade_depth_adjust) ? DepthToDistance(uintBitsToFloat(maxDepth)) : camera_far_plane;
     partition_planes[i] = pow(max_plane / min_plane, i * 0.25f) * min_plane;
     if (i == 0) {
         partition_planes[4] = max_plane;
@@ -104,15 +108,25 @@ void main() {
 
     const float n = partition_planes[i];
     const float f = partition_planes[i + 1];
-    const float boundingBoxSize = GetFrustrumDiag(n, f) * (shadow_map_res + 1.0f) / shadow_map_res;
-    const mat4 light_proj = GetLightProj(boundingBoxSize, n, f);
+    BoundingBox bounding_box = getBoundingBox(n, f);
+    if (b_shadow_texel_move) {
+        const float boundingBoxSize = GetFrustrumDiag(n, f) * (shadow_map_res + 1.0f) / shadow_map_res;
+        bounding_box.min_corner.xy = discretize(bounding_box.min_corner.xy, boundingBoxSize / shadow_map_res);
+        bounding_box.max_corner.xy = bounding_box.min_corner.xy + vec2(boundingBoxSize);
+        cascadeSampleSizes[i] = boundingBoxSize / shadow_map_res;
+    } else {
+        const vec2 d = bounding_box.max_corner.xy - bounding_box.min_corner.xy;
+        cascadeSampleSizes[i] = max(d.x, d.y) / shadow_map_res;
+    }
+    const mat4 light_proj = ortho(bounding_box);
 
     cascadeTransforms[i] = light_proj * light_view;
     cascadeDepths[i] = DistanceToDepth(n);
-    cascadeSampleSizes[i] = boundingBoxSize / shadow_map_res;
 
-    if (i == 0) {
-        minDepth = floatBitsToUint(1.0f);
-        maxDepth = floatBitsToUint(0.0f);
+    if (b_shadow_cascade_depth_adjust) {
+        if (i == 0) {
+            minDepth = floatBitsToUint(1.0f);
+            maxDepth = floatBitsToUint(0.0f);
+        }
     }
 }

@@ -2,6 +2,7 @@
 
 #include "Camera.hpp"
 #include "CameraManager.hpp"
+#include "assets/shaders/src/shadows/indices.glsl"
 #include "debug.hpp"
 #include "load_model.hpp"
 #include "load_shader.hpp"
@@ -36,13 +37,13 @@ enum class ImpDrawTypes {
 template <ImpDrawTypes drawType>
 void ImpDrawMesh(GLuint program, glm::mat4 const& projView, MeshGLRepr const* mesh) {
     if constexpr (drawType == ImpDrawTypes::DepthOnly) {
-        glProgramUniformMatrix4fv(program, 0, 1, GL_FALSE, glm::value_ptr(projView * mesh->model));
+        glProgramUniformMatrix4fv(program, SHADOW_VERT_TRANSFORM_LOCATION, 1, GL_FALSE, glm::value_ptr(projView * mesh->model));
     } else if constexpr (drawType == ImpDrawTypes::Shadows) {
-        glProgramUniformMatrix4fv(program, 0, 1, GL_FALSE, glm::value_ptr(mesh->model));
+        glProgramUniformMatrix4fv(program, SHADOW_VERT_TRANSFORM_LOCATION, 1, GL_FALSE, glm::value_ptr(mesh->model));
     } else if constexpr (drawType == ImpDrawTypes::Color) {
-        glProgramUniformMatrix4fv(program, 0, 1, GL_FALSE, glm::value_ptr(projView * mesh->model));
-        glProgramUniformMatrix4fv(program, 1, 1, GL_FALSE, glm::value_ptr(mesh->model));
-        glProgramUniformMatrix3fv(program, 2, 1, GL_FALSE, glm::value_ptr(mesh->normal));
+        glProgramUniformMatrix4fv(program, LIGHTING_VERT_PROJ_VIEW_MODEL_LOCATION, 1, GL_FALSE, glm::value_ptr(projView * mesh->model));
+        glProgramUniformMatrix4fv(program, LIGHTING_VERT_MODEL_LOCATION, 1, GL_FALSE, glm::value_ptr(mesh->model));
+        glProgramUniformMatrix3fv(program, LIGHTING_VERT_NORMAL_LOCATION, 1, GL_FALSE, glm::value_ptr(mesh->normal));
     }
 
     glBindVertexArray(mesh->VAO);
@@ -170,15 +171,18 @@ int main() {
     glCreateBuffers(1, &zPartitionBuffer);
     glNamedBufferStorage(zPartitionBuffer, sizeof(glm::mat4[4]) + sizeof(glm::vec4[2]), nullptr, 0);
 
-    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, depthComputeBuffer);
-    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, zPartitionBuffer);
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, DEPTH_SSBO_BINDING, depthComputeBuffer);
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, CASCADE_SSBO_BINDING, zPartitionBuffer);
 
-    glProgramUniform1ui(z_partition_shader_program, 0, shadowMapRes);
-    glProgramUniform1f(z_partition_shader_program, 3, CameraManager::getNearPlane());
-    glProgramUniform1f(z_partition_shader_program, 4, CameraManager::getFarPlane());
-    glProgramUniformMatrix4fv(z_partition_shader_program, 10, 1, GL_FALSE, glm::value_ptr(lightView));
+    glBindTextureUnit(LIGHTING_FRAG_SHADOW_MAP_ARR_BINDING, shadowMapArray);
+    glBindSampler(LIGHTING_FRAG_SHADOW_MAP_ARR_BINDING, shadowSampler);
 
-    glProgramUniform3fv(lightingShaderProgram, 20, 1, glm::value_ptr(lightDir));
+    glProgramUniform1ui(z_partition_shader_program, Z_PARTITION_COMP_SHADOW_MAP_RES_LOCATION, shadowMapRes);
+    glProgramUniform1f(z_partition_shader_program, Z_PARTITION_COMP_CAMERA_NEAR_PLANE_LOCATION, CameraManager::getNearPlane());
+    glProgramUniform1f(z_partition_shader_program, Z_PARTITION_COMP_CAMERA_FAR_PLANE_LOCATION, CameraManager::getFarPlane());
+    glProgramUniformMatrix4fv(z_partition_shader_program, Z_PARTITION_COMP_LIGHT_VIEW_LOCATION, 1, GL_FALSE, glm::value_ptr(lightView));
+
+    glProgramUniform3fv(lightingShaderProgram, LIGHTING_FRAG_LIGHT_SHINE_DIR_LOCATION, 1, glm::value_ptr(lightDir));
 
     double currentTime = 0;
     double previousTime = 0;
@@ -209,7 +213,7 @@ int main() {
         DrawMeshesDepthOnly(zPrepassShaderProgram, projView, meshes);
 
         glUseProgram(z_partition_shader_program);
-        glUniformMatrix4fv(5, 1, GL_FALSE, glm::value_ptr(glm::inverse(projView)));
+        glUniformMatrix4fv(Z_PARTITION_COMP_PROJ_VIEW_INV_LOCATION, 1, GL_FALSE, glm::value_ptr(glm::inverse(projView)));
 
         glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
         glDispatchCompute(1, 1, 1);
@@ -247,10 +251,7 @@ int main() {
         glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT);
 
-        glProgramUniform3fv(lightingShaderProgram, 40, 1, glm::value_ptr(camera->cameraPos));
-
-        glBindTextureUnit(0, shadowMapArray);
-        glBindSampler(0, shadowSampler);
+        glProgramUniform3fv(lightingShaderProgram, LIGHTING_FRAG_CAMERA_POS_LOCATION, 1, glm::value_ptr(camera->cameraPos));
 
         DrawMeshesColor(lightingShaderProgram, projView, meshes);
 

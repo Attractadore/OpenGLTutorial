@@ -1,24 +1,20 @@
 #version 460
 
-layout(location = 0) in VERT_OUT {
-    vec3 pos;
-    vec3 normal;
-}
-fIn;
+#define CASCADE_SSBO_QUALIFIERS restrict readonly
+#include "cascade_ssbo.glsl"
+
+layout(location = 0) in vec3 fragPos;
+layout(location = 1) in vec3 normal_v;
 
 layout(location = 0) out vec4 fColor;
 
-layout(location = 20) uniform vec3 lightShine;
+layout(location = LIGHTING_FRAG_LIGHT_SHINE_DIR_LOCATION)
+    uniform vec3 lightShine;
+layout(location = LIGHTING_FRAG_CAMERA_POS_LOCATION)
+    uniform vec3 cameraPos;
 
-layout(location = 40) uniform vec3 cameraPos;
-
-layout(binding = 0) uniform sampler2DArrayShadow lightShadowMapArray;
-
-layout(binding = 1, std430) restrict readonly buffer CascadePropertiesBuffer {
-    mat4 cascadeTransforms[4];
-    vec4 cascadeDepths;
-    vec4 cascadeSampleSizes;
-};
+layout(binding = LIGHTING_FRAG_SHADOW_MAP_ARR_BINDING)
+    uniform sampler2DArrayShadow lightShadowMapArray;
 
 vec3 normalOffset(vec3 lightDir, float lightSampleSize, vec3 fragNormal) {
     float lightNormalCos = dot(lightDir, fragNormal);
@@ -53,9 +49,8 @@ vec3 lighting(vec3 v3LightDir, vec3 cameraDir, vec3 fragNormal, float shadow) {
 }
 
 void main() {
-    vec3 fragPos = fIn.pos;
     float fFragDepth = gl_FragCoord.z;
-    vec3 fragNormal = normalize(fIn.normal);
+    vec3 fragNormal = normalize(normal_v);
     vec3 cameraDir = normalize(cameraPos - fragPos);
     vec3 v3LightDir = normalize(-lightShine);
 

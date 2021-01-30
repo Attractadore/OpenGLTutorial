@@ -1,25 +1,24 @@
 #version 460
 
+#define DEPTH_SSBO_QUALIFIERS restrict
+#include "depth_ssbo.glsl"
+#define CASCADE_SSBO_QUALIFIERS restrict writeonly
+#include "cascade_ssbo.glsl"
+
 layout(local_size_x = 4) in;
 
-layout(binding = 0, std430) restrict buffer DepthBuffer {
-    uint minDepth;
-    uint maxDepth;
-};
-
-layout(binding = 1, std430) restrict writeonly buffer CascadePropertiesBuffer {
-    mat4 cascadeTransforms[4];
-    vec4 cascadeDepths;
-    vec4 cascadeSampleSizes;
-};
+layout(location = Z_PARTITION_COMP_SHADOW_MAP_RES_LOCATION)
+    uniform uint shadow_map_res;
+layout(location = Z_PARTITION_COMP_CAMERA_NEAR_PLANE_LOCATION)
+    uniform float camera_near_plane;
+layout(location = Z_PARTITION_COMP_CAMERA_FAR_PLANE_LOCATION)
+    uniform float camera_far_plane;
+layout(location = Z_PARTITION_COMP_PROJ_VIEW_INV_LOCATION)
+    uniform mat4 proj_view_inv;
+layout(location = Z_PARTITION_COMP_LIGHT_VIEW_LOCATION)
+    uniform mat4 light_view;
 
 shared float partition_planes[5];
-
-layout(location = 0) uniform uint shadow_map_res;
-layout(location = 3) uniform float camera_near_plane;
-layout(location = 4) uniform float camera_far_plane;
-layout(location = 5) uniform mat4 proj_view_inv;
-layout(location = 10) uniform mat4 light_view;
 
 #define DEFINE_DISCRETIZE(type)                       \
     type discretize(const type v, const float step) { \

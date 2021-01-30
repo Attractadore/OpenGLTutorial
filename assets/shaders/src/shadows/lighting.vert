@@ -1,19 +1,22 @@
 #version 460 core
+
+#include "indices.glsl"
+
 layout(location = 0) in vec3 vPos;
 layout(location = 3) in vec3 vNormal;
 
-layout(location = 0) out VERT_OUT {
-    vec3 pos;
-    vec3 normal;
-}
-vOut;
+layout(location = 0) out vec3 pos_v;
+layout(location = 1) out vec3 normal_v;
 
-layout(location = 0) uniform mat4 m;
-layout(location = 1) uniform mat4 model;
-layout(location = 2) uniform mat3 normal;
+layout(location = LIGHTING_VERT_PROJ_VIEW_MODEL_LOCATION)
+    uniform mat4 proj_view_model_mat;
+layout(location = LIGHTING_VERT_MODEL_LOCATION)
+    uniform mat4 model_mat;
+layout(location = LIGHTING_VERT_NORMAL_LOCATION)
+    uniform mat3 normal_mat;
 
 void main() {
-    vOut.pos = (model * vec4(vPos, 1.0f)).xyz;
-    vOut.normal = normal * vNormal;
-    gl_Position = m * vec4(vPos, 1.0f);
+    pos_v = (model_mat * vec4(vPos, 1.0f)).xyz;
+    normal_v = normal_mat * vNormal;
+    gl_Position = proj_view_model_mat * vec4(vPos, 1.0f);
 }

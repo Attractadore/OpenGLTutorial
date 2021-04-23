@@ -3,7 +3,6 @@
 #include "Camera.hpp"
 #include "CameraManager.hpp"
 #include "assets/shaders/src/shadows/indices.glsl"
-#include "assets/shaders/src/shadows/shadow_modes.glsl"
 #include "debug.hpp"
 #include "load_model.hpp"
 #include "load_shader.hpp"
@@ -122,15 +121,12 @@ int main() {
         glDeleteShader(lightingFragmentShader);
     }
     GLuint shadowShaderProgram = 0;
-    GLuint shadow_msm_shader_program = 0;
     GLuint zPrepassShaderProgram = 0;
     {
         GLuint shadowVertexShader = createShaderSPIRV(GL_VERTEX_SHADER, shaderBinPath + "/shadow.vert.spv");
         GLuint shadowGeomShader = createShaderSPIRV(GL_GEOMETRY_SHADER, shaderBinPath + "/shadow.geom.spv");
-        GLuint shadow_msm_fragment_shader = createShaderSPIRV(GL_FRAGMENT_SHADER, shaderBinPath + "/shadow_msm.frag.spv");
         GLuint zPrepassFragmentShader = createShaderSPIRV(GL_FRAGMENT_SHADER, shaderBinPath + "/ZPrepass.frag.spv");
         shadowShaderProgram = createProgram({shadowVertexShader, shadowGeomShader});
-        shadow_msm_shader_program = createProgram({shadowVertexShader, shadowGeomShader, shadow_msm_fragment_shader});
         zPrepassShaderProgram = createProgram({shadowVertexShader, zPrepassFragmentShader});
         glDeleteShader(shadowVertexShader);
         glDeleteShader(shadowGeomShader);
@@ -147,55 +143,26 @@ int main() {
     glm::vec3 lightUp = getLightUp(lightDir);
     glm::mat4 lightView = getLightView(lightDir, lightUp);
 
-    bool b_shadow_cascade_depth_adjust = false;
-    bool b_shadow_texel_move = true;
-    ShadowMode shadow_mode = SHADOW_MODE_MSM;
-
-    GLuint shadowSampler = 0;
-    if (shadow_mode == SHADOW_MODE_STANDARD) {
-        glCreateSamplers(1, &shadowSampler);
-        glSamplerParameteri(shadowSampler, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-        glSamplerParameteri(shadowSampler, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-        glSamplerParameteri(shadowSampler, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
-        glSamplerParameteri(shadowSampler, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
-        glSamplerParameterfv(shadowSampler, GL_TEXTURE_BORDER_COLOR, glm::value_ptr(glm::vec4{1.0f}));
-        glSamplerParameteri(shadowSampler, GL_TEXTURE_COMPARE_MODE, GL_COMPARE_REF_TO_TEXTURE);
-        glSamplerParameteri(shadowSampler, GL_TEXTURE_COMPARE_FUNC, GL_LEQUAL);
-    }
+    GLuint shadowSampler;
+    glCreateSamplers(1, &shadowSampler);
+    glSamplerParameteri(shadowSampler, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glSamplerParameteri(shadowSampler, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glSamplerParameteri(shadowSampler, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
+    glSamplerParameteri(shadowSampler, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
+    glSamplerParameterfv(shadowSampler, GL_TEXTURE_BORDER_COLOR, glm::value_ptr(glm::vec4{1.0f}));
+    glSamplerParameteri(shadowSampler, GL_TEXTURE_COMPARE_MODE, GL_COMPARE_REF_TO_TEXTURE);
+    glSamplerParameteri(shadowSampler, GL_TEXTURE_COMPARE_FUNC, GL_LEQUAL);
 
     unsigned shadowMapRes = 1024;
     GLuint shadowMapArray;
     glCreateTextures(GL_TEXTURE_2D_ARRAY, 1, &shadowMapArray);
     glTextureStorage3D(shadowMapArray, 1, GL_DEPTH_COMPONENT32, shadowMapRes, shadowMapRes, 4);
 
-    GLuint msm_sampler = 0;
-    GLuint msm_moment_array = 0;
-    if (shadow_mode == SHADOW_MODE_MSM) {
-        glCreateSamplers(1, &msm_sampler);
-        glSamplerParameteri(msm_sampler, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-        glSamplerParameteri(msm_sampler, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-        glSamplerParameteri(msm_sampler, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
-        glSamplerParameteri(msm_sampler, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
-        glSamplerParameterfv(msm_sampler, GL_TEXTURE_BORDER_COLOR, glm::value_ptr(glm::vec4{1.0f}));
-
-        glCreateTextures(GL_TEXTURE_2D_ARRAY, 1, &msm_moment_array);
-        glTextureStorage3D(msm_moment_array, 1, GL_RGBA32F, shadowMapRes, shadowMapRes, 4);
-    }
-
     GLuint shadowFramebuffer = 0;
     glCreateFramebuffers(1, &shadowFramebuffer);
     glNamedFramebufferTexture(shadowFramebuffer, GL_DEPTH_ATTACHMENT, shadowMapArray, 0);
-    switch (shadow_mode) {
-        case SHADOW_MODE_STANDARD:
-            glNamedFramebufferDrawBuffer(shadowFramebuffer, GL_NONE);
-            glNamedFramebufferReadBuffer(shadowFramebuffer, GL_NONE);
-            break;
-        case SHADOW_MODE_MSM:
-            glNamedFramebufferTexture(shadowFramebuffer, GL_COLOR_ATTACHMENT0, msm_moment_array, 0);
-            glNamedFramebufferDrawBuffer(shadowFramebuffer, GL_COLOR_ATTACHMENT0);
-            glNamedFramebufferReadBuffer(shadowFramebuffer, GL_COLOR_ATTACHMENT0);
-            break;
-    }
+    glNamedFramebufferDrawBuffer(shadowFramebuffer, GL_NONE);
+    glNamedFramebufferReadBuffer(shadowFramebuffer, GL_NONE);
 
     GLuint depthComputeBuffer = 0;
     glCreateBuffers(1, &depthComputeBuffer);
@@ -207,16 +174,11 @@ int main() {
     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, DEPTH_SSBO_BINDING, depthComputeBuffer);
     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, CASCADE_SSBO_BINDING, zPartitionBuffer);
 
-    switch (shadow_mode) {
-        case SHADOW_MODE_STANDARD:
-            glBindTextureUnit(LIGHTING_FRAG_SHADOW_MAP_ARR_BINDING, shadowMapArray);
-            glBindSampler(LIGHTING_FRAG_SHADOW_MAP_ARR_BINDING, shadowSampler);
-            break;
-        case SHADOW_MODE_MSM:
-            glBindTextureUnit(LIGHTING_FRAG_MSM_MOMENT_ARR_BINDING, msm_moment_array);
-            glBindSampler(LIGHTING_FRAG_MSM_MOMENT_ARR_BINDING, msm_sampler);
-            break;
-    }
+    glBindTextureUnit(LIGHTING_FRAG_SHADOW_MAP_ARR_BINDING, shadowMapArray);
+    glBindSampler(LIGHTING_FRAG_SHADOW_MAP_ARR_BINDING, shadowSampler);
+
+    bool b_shadow_cascade_depth_adjust = false;
+    bool b_shadow_texel_move = true;
 
     glProgramUniform1i(zPrepassShaderProgram, B_SHADOW_CASCADE_DEPTH_ADJUST_LOCATION, b_shadow_cascade_depth_adjust);
 
@@ -228,7 +190,6 @@ int main() {
     glProgramUniform1i(z_partition_shader_program, B_SHADOW_TEXEL_MOVE_LOCATION, b_shadow_texel_move);
 
     glProgramUniform3fv(lightingShaderProgram, LIGHTING_FRAG_LIGHT_SHINE_DIR_LOCATION, 1, glm::value_ptr(lightDir));
-    glProgramUniform1i(lightingShaderProgram, SHADOW_MODE_LOCATION, shadow_mode);
 
     double currentTime = 0;
     double previousTime = 0;
@@ -279,24 +240,10 @@ int main() {
         glBindFramebuffer(GL_FRAMEBUFFER, shadowFramebuffer);
         glViewport(0, 0, shadowMapRes, shadowMapRes);
         glEnable(GL_DEPTH_CLAMP);
-        glDepthFunc(GL_LESS);
-        glDepthMask(GL_TRUE);
-        const GLuint shadow_program =
-            [&]() {
-                switch (shadow_mode) {
-                    case SHADOW_MODE_STANDARD:
-                        glClear(GL_DEPTH_BUFFER_BIT);
-                        return shadowShaderProgram;
-                    case SHADOW_MODE_MSM:
-                        glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
-                        glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
-                        glClear(GL_DEPTH_BUFFER_BIT | GL_COLOR_BUFFER_BIT);
-                        return shadow_msm_shader_program;
-                }
-            }();
+        glClear(GL_DEPTH_BUFFER_BIT);
 
         glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
-        DrawMeshShadows(shadow_program, shadow_meshes);
+        DrawMeshShadows(shadowShaderProgram, shadow_meshes);
 
         glDisable(GL_DEPTH_CLAMP);
         glViewport(0, 0, viewportW, viewportH);
@@ -325,13 +272,10 @@ int main() {
     glDeleteBuffers(1, &depthComputeBuffer);
     glDeleteBuffers(1, &zPartitionBuffer);
     glDeleteSamplers(1, &shadowSampler);
-    glDeleteSamplers(1, &msm_sampler);
     glDeleteTextures(1, &shadowMapArray);
-    glDeleteTextures(1, &msm_moment_array);
     glDeleteFramebuffers(1, &shadowFramebuffer);
     glDeleteProgram(lightingShaderProgram);
     glDeleteProgram(shadowShaderProgram);
-    glDeleteProgram(shadow_msm_shader_program);
     glDeleteProgram(zPrepassShaderProgram);
     glDeleteProgram(z_partition_shader_program);
     CameraManager::terminate();

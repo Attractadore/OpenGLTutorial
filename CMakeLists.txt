@@ -142,7 +142,6 @@ add_shader(shadows "shadows/lighting.vert")
 add_shader(shadows "shadows/lighting.frag")
 add_shader(shadows "shadows/shadow.vert")
 add_shader(shadows "shadows/shadow.geom")
-add_shader(shadows "shadows/shadow_msm.frag")
 add_shader(shadows "shadows/ZPrepass.frag")
 add_shader(shadows "shadows/ZPartition.comp")
 

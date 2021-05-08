@@ -11,11 +11,26 @@ find_package(glm REQUIRED)
 find_package(assimp REQUIRED)
 find_package(PNG REQUIRED)
 
-glad_add_library(GL46 SHARED LANGUAGE C API gl:core=4.6 EXTENSIONS NONE)
+glad_add_library(GL46 MX MXGLOBAL SHARED LANGUAGE C API gl:core=4.6 EXTENSIONS NONE)
 
 add_library(Camera SHARED "src/Camera.cpp")
 target_include_directories(Camera PUBLIC "include")
 target_link_libraries(Camera PUBLIC glm::glm)
+
+add_library(GLFWWrapper "src/GLFWHandle.cpp")
+target_include_directories(GLFWWrapper PUBLIC "include")
+target_link_libraries(GLFWWrapper PRIVATE glfw)
+
+add_library(Input "src/Input.cpp")
+target_link_libraries(Input PUBLIC GLFWWrapper PRIVATE glfw)
+
+add_library(Graphics "src/GLContext.cpp")
+target_include_directories(Graphics PUBLIC "include")
+target_link_libraries(Graphics PUBLIC GLFWWrapper GL46 PRIVATE glfw)
+
+add_library(Window "src/Window.cpp")
+target_include_directories(Window PUBLIC "include")
+target_link_libraries(Window PUBLIC GLFWWrapper PRIVATE Graphics Input glfw)
 
 add_library(CameraManager SHARED "src/CameraManager.cpp")
 target_include_directories(CameraManager PUBLIC "include")
@@ -34,7 +49,7 @@ target_include_directories(LoadTexture PUBLIC "include")
 target_link_libraries(LoadTexture PUBLIC GL46 PRIVATE PNG::PNG)
 
 add_executable(blending "src/blending.cpp")
-target_link_libraries(blending PRIVATE CameraManager LoadModel LoadShader LoadTexture)
+target_link_libraries(blending PRIVATE Window Graphics Input Camera LoadModel LoadShader LoadTexture)
 add_shader(blending "blending/diffuse.vert")
 add_shader(blending "blending/diffuse.frag")
 

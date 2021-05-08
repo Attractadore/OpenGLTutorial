@@ -1,22 +1,12 @@
 #include "Window.hpp"
+#include "Input.hpp"
+#include "GLContext.hpp"
 
 #include <GLFW/glfw3.h>
 
 #include <stdexcept>
 
-namespace {
-Window::Error getGLFWError() {
-    const int error = glfwGetError(nullptr);
-    switch (error) {
-        case GLFW_NO_ERROR:
-            return Window::Error::None;
-        default:
-            return Window::Error::System;
-    }
-}
-}  // namespace
-
-Window::Window(const unsigned width, const unsigned height, std::string const& title) {
+Window::Window(const unsigned width, const unsigned height, std::string const& title, const GraphicsAPI api) : api{api} {
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 6);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
@@ -28,22 +18,53 @@ Window::Window(const unsigned width, const unsigned height, std::string const& t
     if (!this->glfw_window) {
         throw std::runtime_error("Failed to create Window");
     }
+    this->input_manager = std::make_unique<InputManager>(this->glfw_window);
+    if (api == GraphicsAPI::OpenGL) {
+        this->gl_context = std::make_unique<GLContext>(this->glfw_window);
+    }
 }
 
 Window::~Window() {
     glfwDestroyWindow(this->glfw_window);
 }
 
-Window::Error Window::makeContextCurrent() {
-    glfwMakeContextCurrent(this->glfw_window);
-    return getGLFWError();
-}
-
-bool Window::shouldClose() {
+bool Window::shouldClose() const{
     return glfwWindowShouldClose(this->glfw_window);
 }
 
-Window::Error Window::swapBuffers() {
+void Window::swapBuffers() {
     glfwSwapBuffers(this->glfw_window);
-    return getGLFWError();
+    if (glfwGetError(nullptr) != GLFW_NO_ERROR) {
+        throw std::runtime_error("Failed to swap Window buffers");
+    }
+}
+
+std::tuple<unsigned, unsigned> Window::dimensions() const {
+    int width, height;
+    glfwGetWindowSize(this->glfw_window, &width, &height);
+    if (glfwGetError(nullptr) != GLFW_NO_ERROR) {
+        throw std::runtime_error("Failed to get Window dimensions");
+    }
+    return {width, height};
+}
+
+double Window::aspectRatio() const {
+    auto [w, h] = this->dimensions();
+    return static_cast<double>(w) / static_cast<double>(h); 
+}
+
+GLContext* Window::glContext() noexcept{
+    return this->gl_context.get();
+}
+
+GLContext const* Window::glContext() const noexcept{
+    return this->gl_context.get();
+}
+
+InputManager* Window::inputManager() noexcept{
+    return this->input_manager.get();
+}
+
+InputManager const* Window::inputManager() const noexcept {
+    return this->input_manager.get();
 }

@@ -19,19 +19,15 @@ Camera::Camera(glm::vec3 cameraPos, glm::vec3 cameraLookDirection, glm::vec3 wor
     this->updateCameraUpVector();
 }
 
-glm::vec3 Camera::getCameraPos() {
-    return this->cameraPos;
-}
-
-glm::vec3 Camera::getCameraForwardVector() {
+glm::vec3 Camera::getCameraForwardVector() const {
     return this->cameraForwardVector;
 }
 
-glm::vec3 Camera::getCameraRightVector() {
+glm::vec3 Camera::getCameraRightVector() const {
     return this->cameraRightVector;
 }
 
-glm::vec3 Camera::getCameraUpVector() {
+glm::vec3 Camera::getCameraUpVector() const {
     return this->cameraUpVector;
 }
 

@@ -5,10 +5,9 @@ class Camera {
 public:
     Camera(glm::vec3 cameraPos, glm::vec3 cameraLookDirection, glm::vec3 worldUpDirection);
 
-    glm::vec3 getCameraPos();
-    glm::vec3 getCameraForwardVector();
-    glm::vec3 getCameraRightVector();
-    glm::vec3 getCameraUpVector();
+    glm::vec3 getCameraForwardVector() const;
+    glm::vec3 getCameraRightVector() const;
+    glm::vec3 getCameraUpVector() const;
 
     void addPitch(float degrees);
     void addYaw(float degrees);

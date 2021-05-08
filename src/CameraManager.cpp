@@ -48,7 +48,7 @@ void CameraManager::updateViewMatrix() {
         return;
     }
     auto currentCameraPointer = CameraManager::currentCamera.lock();
-    auto cameraPos = currentCameraPointer->getCameraPos();
+    auto cameraPos = currentCameraPointer->cameraPos;
     auto cameraForwardVector = currentCameraPointer->getCameraForwardVector();
     auto cameraUpVector = currentCameraPointer->getCameraUpVector();
     CameraManager::view = glm::lookAt(cameraPos, cameraPos + cameraForwardVector, cameraUpVector);
@@ -126,14 +126,6 @@ void CameraManager::disableCameraLook() {
 }
 
 void CameraManager::initialize(int viewportW, int viewportH) {
-    glfwInit();
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 6);
-    glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
-    glfwWindowHint(GLFW_OPENGL_DEBUG_CONTEXT, GLFW_TRUE);
-    glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
-    CameraManager::currentWindow = glfwCreateWindow(viewportW, viewportH, "OpenGL tutorial", nullptr, nullptr);
-    glfwMakeContextCurrent(CameraManager::currentWindow);
     CameraManager::aspectRatio = static_cast<float>(viewportW) / static_cast<float>(viewportH);
     CameraManager::setVerticalFOV(CameraManager::horizontalFOV / CameraManager::aspectRatio);
 }
@@ -141,7 +133,6 @@ void CameraManager::initialize(int viewportW, int viewportH) {
 void CameraManager::terminate() {
     CameraManager::currentCamera.reset();
     CameraManager::currentWindow = nullptr;
-    glfwTerminate();
 }
 
 void CameraManager::processEvents() {

@@ -17,10 +17,6 @@ add_library(Camera SHARED "src/Camera.cpp")
 target_include_directories(Camera PUBLIC "include")
 target_link_libraries(Camera PUBLIC glm::glm)
 
-add_library(Window "src/Window.cpp" "src/GLFWHandle.cpp")
-target_include_directories(Window PUBLIC "include")
-target_link_libraries(Window PRIVATE glfw)
-
 add_library(CameraManager SHARED "src/CameraManager.cpp")
 target_include_directories(CameraManager PUBLIC "include")
 target_link_libraries(CameraManager PUBLIC glfw Camera)

@@ -1,5 +1,3 @@
-#include "glad.h"
-
 #include "Camera.hpp"
 #include "CameraManager.hpp"
 #include "debug.hpp"
@@ -29,7 +27,7 @@ int main() {
     CameraManager::initialize(viewportW, viewportH);
     CameraManager::currentCamera = camera;
     CameraManager::enableCameraLook();
-    gladLoadGLLoader(reinterpret_cast<GLADloadproc>(glfwGetProcAddress));
+    gladLoadGL(glfwGetProcAddress);
 
     activateGLDebugOutput();
     glEnable(GL_DEPTH_TEST);

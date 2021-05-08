@@ -1,5 +1,3 @@
-#include "glad.h"
-
 #include "Camera.hpp"
 #include "CameraManager.hpp"
 #include "assets/shaders/src/shadows/indices.glsl"
@@ -97,7 +95,7 @@ int main() {
     CameraManager::currentCamera = camera;
     CameraManager::enableCameraLook();
     CameraManager::setFarPlane(20.0f);
-    gladLoadGLLoader(reinterpret_cast<GLADloadproc>(glfwGetProcAddress));
+    gladLoadGL(glfwGetProcAddress);
 
     activateGLDebugOutput();
     glEnable(GL_DEPTH_TEST);
